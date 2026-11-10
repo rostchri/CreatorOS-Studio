@@ -1,1 +1,140 @@
-LyogPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CiAgIENyZWF0b3JPUyBiYWNrZW5kIGNvbmZpZ3VyYXRpb24uCiAgIEV2ZXJ5dGhpbmcgY2FuIGJlIG92ZXJyaWRkZW4gYnkgZW52aXJvbm1lbnQgdmFyaWFibGU6IG5vCiAgIG1hY2hpbmUtc3BlY2lmaWMgcGF0aCBpcyBoYXJkLWNvZGVkLgogICA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0gKi8KaW1wb3J0IGZzIGZyb20gJ25vZGU6ZnMnCmltcG9ydCBvcyBmcm9tICdub2RlOm9zJwppbXBvcnQgcGF0aCBmcm9tICdub2RlOnBhdGgnCmltcG9ydCB7IGV4ZWNGaWxlU3luYyB9IGZyb20gJ25vZGU6Y2hpbGRfcHJvY2VzcycKCmNvbnN0IGhvbWUgPSBvcy5ob21lZGlyKCkKY29uc3QgcmVwbyA9IHBhdGgucmVzb2x2ZShpbXBvcnQubWV0YS5kaXJuYW1lLCAnLi4nKQoKLyogU2V0dGluZ3Mgd3JpdHRlbiBieSB0aGUgaW5zdGFsbGVyIChucG0gcnVuIHNldHVwLCAiU3R1ZGlvIHNldHRpbmdzIiBzdGVwKTogPGRhdGE+L3N0dWRpby5lbnYsIG9uZQogICBLRVk9dmFsdWUgbGluZSBwZXIgc2V0dGluZy4gQSB2YXJpYWJsZSBhbHJlYWR5IHNldCBpbiB0aGUgZW52aXJvbm1lbnQgdGFrZXMgcHJpb3JpdHkuICovCmV4cG9ydCBjb25zdCBGSUNISUVSX1JFR0xBR0VTID0gcGF0aC5qb2luKHByb2Nlc3MuZW52LkNSRUFUT1JPU19EQVRBIHx8IHBhdGguam9pbihob21lLCAnY3JlYXRvcm9zLWRhdGEnKSwgJ3N0dWRpby5lbnYnKQp0cnkgewogIGZvciAoY29uc3QgbGlnbmUgb2YgZnMucmVhZEZpbGVTeW5jKEZJQ0hJRVJfUkVHTEFHRVMsICd1dGY4Jykuc3BsaXQoJ1xuJykpIHsKICAgIGNvbnN0IG0gPSAvXlxzKihbQS1aXVtBLVowLTlfXSopXHMqPVxzKiguKj8pXHMqJC8uZXhlYyhsaWduZSkKICAgIGlmIChtICYmIHByb2Nlc3MuZW52W21bMV1dID09PSB1bmRlZmluZWQpIHByb2Nlc3MuZW52W21bMV1dID0gbVsyXS5yZXBsYWNlKC9eKFsnIl0pKC4qKVwxJC8sICckMicpCiAgfQp9IGNhdGNoIHsgLyogbm8gc2V0dGluZ3MgZmlsZTogZGVmYXVsdHMgKi8gfQpjb25zdCBjb21meURpciA9IHByb2Nlc3MuZW52LkNPTUZZX0RJUiB8fCBwYXRoLmpvaW4oaG9tZSwgJ0NvbWZ5VUknKQpjb25zdCBkYXRhRGlyID0gcHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX0RBVEEgfHwgcGF0aC5qb2luKGhvbWUsICdjcmVhdG9yb3MtZGF0YScpCgovKiogVlJBTSBvZiB0aGlzIG1hY2hpbmUncyBmaXJzdCBOVklESUEgY2FyZCwgaW4gR0IgKDAgaWYgdW5rbm93bikuIFJlYWQgb25jZS4gKi8KbGV0IHZyYW1MdWUKZnVuY3Rpb24gdnJhbUxvY2FsZUdvKCkgewogIGlmICh2cmFtTHVlID09PSB1bmRlZmluZWQpIHsKICAgIHRyeSB7CiAgICAgIGNvbnN0IG1vID0gZXhlY0ZpbGVTeW5jKCdudmlkaWEtc21pJywgWyctLXF1ZXJ5LWdwdT1tZW1vcnkudG90YWwnLCAnLS1mb3JtYXQ9Y3N2LG5vaGVhZGVyLG5vdW5pdHMnXSwgeyB0aW1lb3V0OiAzMDAwLCBlbmNvZGluZzogJ3V0ZjgnIH0pCiAgICAgIHZyYW1MdWUgPSBNYXRoLnJvdW5kKE51bWJlcihtby5zcGxpdCgnXG4nKVswXSkgLyAxMDI0KSB8fCAwCiAgICB9IGNhdGNoIHsgdnJhbUx1ZSA9IDAgfQogIH0KICByZXR1cm4gdnJhbUx1ZQp9CgpleHBvcnQgY29uc3QgQ09ORklHID0gewogIC8qIEhUVFAgc2VydmVyLCBsb29wYmFjayBieSBkZWZhdWx0LiBUbyBleHBvc2UgaXQgdG8gdGhlIG5ldHdvcmssIHNldAogICAgIENSRUFUT1JPU19IT1NUPTAuMC4wLjAgYmVoaW5kIGEgcHJveHkgb2YgeW91ciBjaG9pY2UuICovCiAgcG9ydDogTnVtYmVyKHByb2Nlc3MuZW52LkNSRUFUT1JPU19QT1JUIHx8IDg3ODcpLAogIGhvc3Q6IHByb2Nlc3MuZW52LkNSRUFUT1JPU19IT1NUIHx8ICcxMjcuMC4wLjEnLAoKICAvKiBMb2NhbCBDb21meVVJLiBgY29tZnlEaXJgIGlzIHVzZWQgdG8gZmluZCBpdHMgZm9sZGVycyBhbmQgaXRzIFB5dGhvbi4gKi8KICBjb21meVVybDogcHJvY2Vzcy5lbnYuQ09NRllfVVJMIHx8ICdodHRwOi8vMTI3LjAuMC4xOjgxODgnLAogIGNvbWZ5RGlyLAogIGNvbWZ5T3V0cHV0OiBwcm9jZXNzLmVudi5DT01GWV9PVVRQVVQgfHwgcGF0aC5qb2luKGNvbWZ5RGlyLCAnb3V0cHV0JyksCiAgLyogQ29tZnlVSSBgaW5wdXQvYCBmb2xkZXI6IGRlc3RpbmF0aW9uIG9mIGltYWdlcyB1cGxvYWRlZCBmb3IgYW4gZWRpdAogICAgIHJlY2lwZS4gQSBMb2FkSW1hZ2Ugbm9kZSBjYW4gb25seSByZWFkIGZyb20gdGhlcmUsIGhlbmNlIGEgcmVhbCBmaWxlCiAgICAgdXBsb2FkIHJhdGhlciB0aGFuIGFuIG9iamVjdCBVUkwuICovCiAgY29tZnlJbnB1dDogcHJvY2Vzcy5lbnYuQ09NRllfSU5QVVQgfHwgcGF0aC5qb2luKGNvbWZ5RGlyLCAnaW5wdXQnKSwKICAvKiBDb21meVVJIHZlbnYgUHl0aG9uOiB1c2VkIGJ5IGhlbHBlciBzY3JpcHRzIChjYXB0aW9uIGJ1cm5pbmcpIGFuZAogICAgIHRoZSBkaWFnbm9zdGljLiAqLwogIGNvbWZ5UHl0aG9uOiBwcm9jZXNzLmVudi5DT01GWV9QWVRIT04gfHwgcGF0aC5qb2luKGNvbWZ5RGlyLCAndmVudi9iaW4vcHl0aG9uJyksCgogIC8qIExvUkEgZm9sZGVyOiB1c2VkIHRvIGJ1aWxkIHRoZSBsaXN0IG9mZmVyZWQgdG8gdGhlIGZyb250IGVuZCBhbmQgdG8KICAgICBjbGFzc2lmeSBlYWNoIGZpbGUgYnkgYXJjaGl0ZWN0dXJlIChoZWFkZXIgcmVhZCkuICovCiAgbG9yYXNEaXI6IHByb2Nlc3MuZW52LkNSRUFUT1JPU19MT1JBUyB8fCBwYXRoLmpvaW4oY29tZnlEaXIsICdtb2RlbHMvbG9yYXMnKSwKCiAgLyogWi1JbWFnZSBDb250cm9sTmV0IHBhdGNoIChGdW4tQ04gVW5pb24pLCBsb2FkZWQgYnkgTW9kZWxQYXRjaExvYWRlci4KICAgICBMaXZlcyBpbiBtb2RlbHMvbW9kZWxfcGF0Y2hlcy8sIG5vdCBtb2RlbHMvY29udHJvbG5ldC86IGl0IGlzIGEgbW9kZWwKICAgICBwYXRjaCwgbm90IGEgQ29udHJvbE5ldCBpbiB0aGUgc3RhbmRhcmQgbm9kZSBzZW5zZS4gKi8KICBjb250cm9sTmV0UGF0Y2g6IHByb2Nlc3MuZW52LkNSRUFUT1JPU19DTl9QQVRDSAogICAgfHwgJ1otSW1hZ2UtVHVyYm8tRnVuLUNvbnRyb2xuZXQtVW5pb24uc2FmZXRlbnNvcnMnLAoKICAvKiBTaGFwaW5nIHRleHRzOiByZXdyaXRlciBzeXN0ZW0gcHJvbXB0cywgZW5naW5lIGxheWVycy4gS2VwdCBvdXRzaWRlIHRoZQogICAgIGNvZGUgb24gcHVycG9zZSBzbyB0aGV5IGNhbiBiZSBlZGl0ZWQgd2l0aG91dCBhIGRlcGxveS4gUmVhZCBvbiBFVkVSWSBqb2IuICovCiAgcHJvbXB0c0RpcjogcHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX1BST01QVFMgfHwgcGF0aC5qb2luKHJlcG8sICdwcm9tcHRzJyksCgogIC8qIEFQSS1mb3JtYXQgd29ya2Zsb3dzOiBzb3VyY2Ugb2YgdHJ1dGggZm9yIHJlY2lwZXMuICovCiAgd29ya2Zsb3dzRGlyOiBwcm9jZXNzLmVudi5DUkVBVE9ST1NfV09SS0ZMT1dTIHx8IHBhdGguam9pbihyZXBvLCAnd29ya2Zsb3dzJyksCiAgLy8gV2lsZGNhcmQgKi50eHQgZmlsZXM6IHNvdXJjZSBvZiB0aGUgIvCfjrIgcmFuZG9tIiBpdGVtcywKICAvLyBkcmF3biBzZXJ2ZXItc2lkZSB3aXRoIHRoZSBqb2Igc2VlZCAoc2VydmVyL3dpbGRjYXJkcy5qcykuCiAgd2lsZGNhcmRzRGlyOiBwcm9jZXNzLmVudi5DUkVBVE9ST1NfV0lMRENBUkRTIHx8IHBhdGguam9pbihkYXRhRGlyLCAnd2lsZGNhcmRzJyksCiAgZGVmYXVsdFdvcmtmbG93OiBwcm9jZXNzLmVudi5DUkVBVE9ST1NfV09SS0ZMT1cgfHwgJ1BST0RfZ2VuX2tyZWFfc2Z3Lmpzb24nLAogIC8qIERlZmF1bHQgcGhvdG8gZW5naW5lOiBLcmVhIDIgKCdrcmVhJykgb3IgRkxVWC4yIEtsZWluIDlCICgna2xlaW4nKS4KICAgICBBIGpvYiBjYW4gcmVxdWVzdCB0aGUgb3RoZXIgKGpvYi5waG90b0VuZ2luZSkuIFNpbmdsZSBzb3VyY2U6IHRoZQogICAgIHJld3JpdGVyLCB0aGUgY2Fyb3VzZWwgYW5kIHRoZSByZWNpcGVzIGFsbCByZWFkIHRoaXMgdmFsdWUuICovCiAgcGhvdG9FbmdpbmU6IFsna3JlYScsICdrbGVpbiddLmluY2x1ZGVzKChwcm9jZXNzLmVudi5DUkVBVE9ST1NfUEhPVE9fRU5HSU5FIHx8ICcnKS50cmltKCkudG9Mb3dlckNhc2UoKSkKICAgID8gcHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX1BIT1RPX0VOR0lORS50cmltKCkudG9Mb3dlckNhc2UoKQogICAgLy8gS3JlYSAyIHdlaWdocyAxMyBHQjogYmVsb3cgMTQgR0Igb2YgVlJBTSwgS2xlaW4gKGxpZ2h0ZW5lZCB0byA0Qiwgc2VlIGFsbGVnZS5qcykgcmVwbGFjZXMgaXQKICAgIDogdnJhbUxvY2FsZUdvKCkgJiYgdnJhbUxvY2FsZUdvKCkgPCAxNCB8fCBbOCwgMTJdLmluY2x1ZGVzKE51bWJlcihwcm9jZXNzLmVudi5DUkVBVE9ST1NfVlJBTSkpID8gJ2tsZWluJyA6ICdrcmVhJywKCiAgLyogUGVyc2lzdGVudCBkYXRhLCBPVVRTSURFIHRoZSBnaXQgcmVwby4gKi8KICBkYXRhRGlyLAogIC8qIFBlcnNvbmE6IGBwZXJzb25hLmpzb25gIGluIHRoZSBkYXRhIGRpcmVjdG9yeSAoc2VlIHNlcnZlci9wZXJzb25hLmpzKS4gKi8KICBwZXJzb25hRmlsZTogcHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX1BFUlNPTkFfRklMRSB8fCBwYXRoLmpvaW4oZGF0YURpciwgJ3BlcnNvbmEuanNvbicpLAogIC8qIERlbGl2ZXJpZXMgKHZpZGVvcyB3aXRoIGJ1cm5lZCBjYXB0aW9ucykuICovCiAgZXhwb3J0c0RpcjogcHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX0VYUE9SVFMgfHwgcGF0aC5qb2luKGRhdGFEaXIsICdleHBvcnRzJyksCgogIC8qIEJ1aWx0IGZyb250IGVuZCAobnBtIHJ1biBidWlsZCkuICovCiAgZGlzdERpcjogcGF0aC5qb2luKHJlcG8sICdkaXN0JyksCgogIC8qIE9sbGFtYSByZXdyaXRlcyB0aGUgcHJvbXB0IEJFRk9SRSBkaWZmdXNpb24sIG9uIHRoZSBzYW1lIEdQVS4gQSB+MjAgR2lCIExMTQogICAgIGFuZCBhIH4yMCBHaUIgZGlmZnVzaW9uIG1vZGVsIHJlc2lkZW50IHRvZ2V0aGVyIG9uIGEgMzIgR2lCIGNhcmQgPSBDVURBCiAgICAgT09NLCBzbyBrZWVwX2FsaXZlPTAgaXMgZm9yY2VkOiB0aGUgTExNIHVubG9hZHMgcmlnaHQgYWZ0ZXIgcmVwbHlpbmcuCiAgICAgQ1JFQVRPUk9TX09MTEFNQV9VTkxPQUQ9MCByZXN0b3JlcyB0aGUgZGVmYXVsdCAoa2VlcF9hbGl2ZSA1IG1pbikuICovCiAgb2xsYW1hVW5sb2FkOiBwcm9jZXNzLmVudi5DUkVBVE9ST1NfT0xMQU1BX1VOTE9BRCAhPT0gJzAnLAoKICAvKiBQcm9tcHQgcmV3cml0aW5nIHZpYSBPbGxhbWEgKHNlZSBzZXJ2ZXIvY29tcG9zZXIuanMpLiAqLwogIG9sbGFtYVVybDogcHJvY2Vzcy5lbnYuT0xMQU1BX1VSTCB8fCAnaHR0cDovLzEyNy4wLjAuMToxMTQzNCcsCiAgLyogREVTQ1JJUFRJT04gVkxNIChkZXNjcmliZVNjZW5lIC8gZGVzY3JpYmVPdXRmaXQgLyBjYXJvdXNlbCkuIFNlcnZlZCBvbgogICAgIENQVSBieSBkZWZhdWx0OiBubyBWUkFNIGNvbnRlbnRpb24gd2l0aCBDb21meVVJLiAqLwogIHZpc2lvbkRlc2NyaWJlTW9kZWw6IHByb2Nlc3MuZW52LkNSRUFUT1JPU19WTE1fREVTQ1JJQkUgfHwgJ3F3ZW4yLjV2bDo3YicsCiAgdmlzaW9uRGVzY3JpYmVDcHU6IHByb2Nlc3MuZW52LkNSRUFUT1JPU19WTE1fREVTQ1JJQkVfR1BVICE9PSAnMScsCiAgLyogQSBzaW5nbGUgcmVnaXN0ZXIgKFNGVyk6IGEgc2luZ2xlIHdyaXRlci4gS2V5IGtlcHQgZm9yIC9hcGkvaGVhbHRoLAogICAgIHdoaWNoIGV4cG9zZXMgdGhlIHRhYmxlLiAqLwogIGNvbXBvc2VyTW9kZWxzOiB7CiAgICBzZnc6IHByb2Nlc3MuZW52LkNSRUFUT1JPU19MTE0gfHwgJ21pc3RyYWwtc21hbGw6bGF0ZXN0JywKICB9LAogIC8qIE9uIENQVSBhIHJld3JpdGUgdGFrZXMgMjAgdG8gNjAgcyBkZXBlbmRpbmcgb24gdGhlIG1vZGVsLiBUaGUgbWFyZ2luCiAgICAgY292ZXJzIGEgZmlyc3QgY2FsbCB0aGF0IG11c3QgbG9hZCB0aGUgbW9kZWwgZnJvbSBkaXNrLiAqLwogIGNvbXBvc2VyVGltZW91dE1zOiBOdW1iZXIocHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX0xMTV9USU1FT1VUIHx8IDI0MDAwMCksCgogIC8qIFNhZmVndWFyZDogYSBqb2IgZXhjZWVkaW5nIHRoaXMgaXMgbWFya2VkIGZhaWxlZCBpbnN0ZWFkIG9mIGhhbmdpbmcuCiAgICAgMTIwIG1pbjogYSBsb25nIG1vdGlvbiByZW5kZXIgY2FuIGxlZ2l0aW1hdGVseSBleGNlZWQgYW4gaG91ci4gVGhpcyBpcwogICAgIGFuIElOQUNUSVZJVFkgdGltZW91dCAocnVucyBvbmx5IHdoaWxlIHRoZSBwcm9tcHQgaXMgbmVpdGhlciBydW5uaW5nIG5vcgogICAgIHBlbmRpbmcpLCBzbyBpdCBjYW4gYmUgZ2VuZXJvdXMuICovCiAgam9iVGltZW91dE1zOiBOdW1iZXIocHJvY2Vzcy5lbnYuQ1JFQVRPUk9TX0pPQl9USU1FT1VUX01TIHx8IDEyMCAqIDYwICogMTAwMCksCgogIC8qIE93bmVyIGtleSAocHVibGljIGRlbW8pLiBXaGVuIHNldCwgaXQgbG9ja3Mgd2hhdCBkZXNjcmliZXMgdGhlIHN0dWRpbwogICAgIChDcmVhdG9yIHBhZ2UsIGNoYXJhY3RlcnMgYW5kIHdhcmRyb2JlLCBMb1JBcywgcHJvZmlsZSBwaG90b3MsIHJlY2lwZXMKICAgICBhbmQgcHJvbXB0cyk6IHdpdGhvdXQgdGhlIGV4YWN0IFgtT3duZXItS2V5IGhlYWRlciwgdGhlc2Ugd3JpdGVzIHJldHVybgogICAgIDQwMy4gV2hlbiB1bnNldCwgbm90aGluZyBpcyBsb2NrZWQgKGxvY2FsIHNpbmdsZS11c2VyIGluc3RhbGwpLiAqLwogIGNsZVByb3ByaWV0YWlyZTogKHByb2Nlc3MuZW52LkNSRUFUT1JPU19PV05FUl9LRVkgfHwgJycpLnRyaW0oKSB8fCBudWxsLAogIC8qIEFkdWx0IG1vZGUgKGxvY2FsIHNpbmdsZS11c2VyIGluc3RhbGwpOiB0ZXh0LXRvLWltYWdlIGdlbmVyYXRpb24gaXMgbm90IGZpbHRlcmVkIGZvciBzZXh1YWwKICAgICBjb250ZW50LiBOZXZlciB3aXRoIGFuIG93bmVyIGtleSAoc2hhcmVkIHN0dWRpbyksIG5ldmVyIGJlbG93IHRoZSAibWlub3JzIiBmbG9vciwgbmV2ZXIKICAgICB3aGVuIGEgcmVuZGVyIHN0YXJ0cyBmcm9tIGFuIGltcG9ydGVkIHBob3RvIChzZWUgam9icy5qcykuICovCiAgLy8gbmV2ZXIgb24gdGhlIHB1YmxpYyBkZW1vOiByZXF1aXJlcyBhIGxvY2FsIGluc3RhbGwsIG5vIG93bmVyIGtleSwgbGlzdGVuaW5nIG9uIHRoaXMgbWFjaGluZSBvbmx5CiAgLy8gTE9DQUwgRk9SSyBQQVRDSDogQ1JFQVRPUk9TX1JFU0VBVV9QUklWRT0xIHJlbXBsYWNlIGxlIGNyaXRlcmUgwqsgw6ljb3V0ZSBsb2NhbGUgwrsgcGFyIHVuZQogIC8vIGh5cG90aGVzZSByZXNlYXUgcXVlIGwnZXhwbG9pdGFudCBnYXJhbnRpdCBsdWktbWVtZSAoaWNpIDogYmluZCBzdXIgdW5lIGFkcmVzc2UgVGFpbHNjYWxlCiAgLy8gcHJpdmVlLCBpbnN0YWxsYXRpb24gbW9uby11dGlsaXNhdGV1ciwgYXVjdW5lIGNsZSBwcm9wcmlldGFpcmUpLgogIC8vIFNhbnMgY2V0dGUgdmFyaWFibGUsIGxlIGNvbXBvcnRlbWVudCBhbW9udCBlc3QgaW50YWN0IChsb29wYmFjayBzZXVsKS4KICBjb250ZW51QWR1bHRlOiBwcm9jZXNzLmVudi5DUkVBVE9ST1NfQ09OVEVOVV9BRFVMVEUgPT09ICcxJyAmJiAhKHByb2Nlc3MuZW52LkNSRUFUT1JPU19PV05FUl9LRVkgfHwgJycpLnRyaW0oKQogICAgJiYgKFsnMTI3LjAuMC4xJywgJ2xvY2FsaG9zdCcsICc6OjEnXS5pbmNsdWRlcyhwcm9jZXNzLmVudi5DUkVBVE9ST1NfSE9TVCB8fCAnMTI3LjAuMC4xJykKICAgICAgICB8fCBwcm9jZXNzLmVudi5DUkVBVE9ST1NfUkVTRUFVX1BSSVZFID09PSAnMScpLAp9CgpDT05GSUcubWVkaWFEaXIgPSBwYXRoLmpvaW4oQ09ORklHLmRhdGFEaXIsICdtZWRpYScpCkNPTkZJRy5kYkZpbGUgPSBwYXRoLmpvaW4oQ09ORklHLmRhdGFEaXIsICdkYicsICdjcmVhdG9yb3Muc3FsaXRlJykK
+/* ============================================================
+   CreatorOS backend configuration.
+   Everything can be overridden by environment variable: no
+   machine-specific path is hard-coded.
+   ============================================================ */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+
+const home = os.homedir()
+const repo = path.resolve(import.meta.dirname, '..')
+
+/* Settings written by the installer (npm run setup, "Studio settings" step): <data>/studio.env, one
+   KEY=value line per setting. A variable already set in the environment takes priority. */
+export const FICHIER_REGLAGES = path.join(process.env.CREATOROS_DATA || path.join(home, 'creatoros-data'), 'studio.env')
+try {
+  for (const ligne of fs.readFileSync(FICHIER_REGLAGES, 'utf8').split('\n')) {
+    const m = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(ligne)
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2')
+  }
+} catch { /* no settings file: defaults */ }
+const comfyDir = process.env.COMFY_DIR || path.join(home, 'ComfyUI')
+const dataDir = process.env.CREATOROS_DATA || path.join(home, 'creatoros-data')
+
+/** VRAM of this machine's first NVIDIA card, in GB (0 if unknown). Read once. */
+let vramLue
+function vramLocaleGo() {
+  if (vramLue === undefined) {
+    try {
+      const mo = execFileSync('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits'], { timeout: 3000, encoding: 'utf8' })
+      vramLue = Math.round(Number(mo.split('\n')[0]) / 1024) || 0
+    } catch { vramLue = 0 }
+  }
+  return vramLue
+}
+
+export const CONFIG = {
+  /* HTTP server, loopback by default. To expose it to the network, set
+     CREATOROS_HOST=0.0.0.0 behind a proxy of your choice. */
+  port: Number(process.env.CREATOROS_PORT || 8787),
+  host: process.env.CREATOROS_HOST || '127.0.0.1',
+
+  /* Local ComfyUI. `comfyDir` is used to find its folders and its Python. */
+  comfyUrl: process.env.COMFY_URL || 'http://127.0.0.1:8188',
+  comfyDir,
+  comfyOutput: process.env.COMFY_OUTPUT || path.join(comfyDir, 'output'),
+  /* ComfyUI `input/` folder: destination of images uploaded for an edit
+     recipe. A LoadImage node can only read from there, hence a real file
+     upload rather than an object URL. */
+  comfyInput: process.env.COMFY_INPUT || path.join(comfyDir, 'input'),
+  /* ComfyUI venv Python: used by helper scripts (caption burning) and the
+     diagnostic. */
+  comfyPython: process.env.COMFY_PYTHON || path.join(comfyDir, 'venv/bin/python'),
+
+  /* LoRA folder: used to build the list offered to the front end and to
+     classify each file by architecture (header read). */
+  lorasDir: process.env.CREATOROS_LORAS || path.join(comfyDir, 'models/loras'),
+
+  /* Z-Image ControlNet patch (Fun-CN Union), loaded by ModelPatchLoader.
+     Lives in models/model_patches/, not models/controlnet/: it is a model
+     patch, not a ControlNet in the standard node sense. */
+  controlNetPatch: process.env.CREATOROS_CN_PATCH
+    || 'Z-Image-Turbo-Fun-Controlnet-Union.safetensors',
+
+  /* Shaping texts: rewriter system prompts, engine layers. Kept outside the
+     code on purpose so they can be edited without a deploy. Read on EVERY job. */
+  promptsDir: process.env.CREATOROS_PROMPTS || path.join(repo, 'prompts'),
+
+  /* API-format workflows: source of truth for recipes. */
+  workflowsDir: process.env.CREATOROS_WORKFLOWS || path.join(repo, 'workflows'),
+  // Wildcard *.txt files: source of the "🎲 random" items,
+  // drawn server-side with the job seed (server/wildcards.js).
+  wildcardsDir: process.env.CREATOROS_WILDCARDS || path.join(dataDir, 'wildcards'),
+  defaultWorkflow: process.env.CREATOROS_WORKFLOW || 'PROD_gen_krea_sfw.json',
+  /* Default photo engine: Krea 2 ('krea') or FLUX.2 Klein 9B ('klein').
+     A job can request the other (job.photoEngine). Single source: the
+     rewriter, the carousel and the recipes all read this value. */
+  photoEngine: ['krea', 'klein'].includes((process.env.CREATOROS_PHOTO_ENGINE || '').trim().toLowerCase())
+    ? process.env.CREATOROS_PHOTO_ENGINE.trim().toLowerCase()
+    // Krea 2 weighs 13 GB: below 14 GB of VRAM, Klein (lightened to 4B, see allege.js) replaces it
+    : vramLocaleGo() && vramLocaleGo() < 14 || [8, 12].includes(Number(process.env.CREATOROS_VRAM)) ? 'klein' : 'krea',
+
+  /* Persistent data, OUTSIDE the git repo. */
+  dataDir,
+  /* Persona: `persona.json` in the data directory (see server/persona.js). */
+  personaFile: process.env.CREATOROS_PERSONA_FILE || path.join(dataDir, 'persona.json'),
+  /* Deliveries (videos with burned captions). */
+  exportsDir: process.env.CREATOROS_EXPORTS || path.join(dataDir, 'exports'),
+
+  /* Built front end (npm run build). */
+  distDir: path.join(repo, 'dist'),
+
+  /* Ollama rewrites the prompt BEFORE diffusion, on the same GPU. A ~20 GiB LLM
+     and a ~20 GiB diffusion model resident together on a 32 GiB card = CUDA
+     OOM, so keep_alive=0 is forced: the LLM unloads right after replying.
+     CREATOROS_OLLAMA_UNLOAD=0 restores the default (keep_alive 5 min). */
+  ollamaUnload: process.env.CREATOROS_OLLAMA_UNLOAD !== '0',
+
+  /* Prompt rewriting via Ollama (see server/composer.js). */
+  ollamaUrl: process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
+  /* DESCRIPTION VLM (describeScene / describeOutfit / carousel). Served on
+     CPU by default: no VRAM contention with ComfyUI. */
+  visionDescribeModel: process.env.CREATOROS_VLM_DESCRIBE || 'qwen2.5vl:7b',
+  visionDescribeCpu: process.env.CREATOROS_VLM_DESCRIBE_GPU !== '1',
+  /* A single register (SFW): a single writer. Key kept for /api/health,
+     which exposes the table. */
+  composerModels: {
+    sfw: process.env.CREATOROS_LLM || 'mistral-small:latest',
+  },
+  /* On CPU a rewrite takes 20 to 60 s depending on the model. The margin
+     covers a first call that must load the model from disk. */
+  composerTimeoutMs: Number(process.env.CREATOROS_LLM_TIMEOUT || 240000),
+
+  /* Safeguard: a job exceeding this is marked failed instead of hanging.
+     120 min: a long motion render can legitimately exceed an hour. This is
+     an INACTIVITY timeout (runs only while the prompt is neither running nor
+     pending), so it can be generous. */
+  jobTimeoutMs: Number(process.env.CREATOROS_JOB_TIMEOUT_MS || 120 * 60 * 1000),
+
+  /* Owner key (public demo). When set, it locks what describes the studio
+     (Creator page, characters and wardrobe, LoRAs, profile photos, recipes
+     and prompts): without the exact X-Owner-Key header, these writes return
+     403. When unset, nothing is locked (local single-user install). */
+  cleProprietaire: (process.env.CREATOROS_OWNER_KEY || '').trim() || null,
+  /* Adult mode (local single-user install): text-to-image generation is not filtered for sexual
+     content. Never with an owner key (shared studio), never below the "minors" floor, never
+     when a render starts from an imported photo (see jobs.js). */
+  // never on the public demo: requires a local install, no owner key, listening on this machine only
+  // LOCAL FORK PATCH: CREATOROS_RESEAU_PRIVE=1 remplace le critère « écoute locale » par une
+  // hypothese reseau que l'exploitant garantit lui-meme (ici : bind sur une adresse Tailscale
+  // privee, installation mono-utilisateur, aucune cle proprietaire).
+  // Sans cette variable, le comportement amont est intact (loopback seul).
+  contenuAdulte: process.env.CREATOROS_CONTENU_ADULTE === '1' && !(process.env.CREATOROS_OWNER_KEY || '').trim()
+    && (['127.0.0.1', 'localhost', '::1'].includes(process.env.CREATOROS_HOST || '127.0.0.1')
+        || process.env.CREATOROS_RESEAU_PRIVE === '1'),
+}
+
+CONFIG.mediaDir = path.join(CONFIG.dataDir, 'media')
+CONFIG.dbFile = path.join(CONFIG.dataDir, 'db', 'creatoros.sqlite')
