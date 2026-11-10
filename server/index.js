@@ -25,7 +25,7 @@ import * as composer from './composer.js'
 import * as carrousel from './carrousel.js'
 import * as captions from './captions.js'
 import { ensurePoster } from './poster.js'
-import { T0_BLOCKLIST, t0Hit, t0Mineur } from './t0.js'
+import { T0_BLOCKLIST, T0_BLOCKLIST_MINEURS, t0Hit, t0Mineur } from './t0.js'
 import { SANS_PERSONNAGE, persona, personas, identityPreambleFor, enregistrer as enregistrerPersona, champsFiges, creer as creerPersona, activer as activerPersona, supprimer as supprimerPersona, marquerFictif } from './persona.js'
 import { lireCreateur, ecrireCreateur } from './createur.js'
 import { etatCloud, importerCloud, tacheCloud } from './cloud-loras.js'
@@ -330,7 +330,9 @@ app.get('/api/health', async req => {
     // Studio locked by an owner key (the front end hides editing).
     verrou: !!CONFIG.cleProprietaire,
     // The front end reads these lists on mount instead of keeping a copy.
-    t0Blocklist: T0_BLOCKLIST,
+    /* LOCAL FORK PATCH: in adult mode the full list would block every adult prompt in the browser
+       before the server can decide (character, LoRA, photo provenance): only the minors floor here. */
+    t0Blocklist: CONFIG.contenuAdulte ? T0_BLOCKLIST_MINEURS : T0_BLOCKLIST,
     // Layers the server prefixes to the prompt, so the console can show them
     // ("what will actually be sent" block). Predictive display; provenance
     // after render is authoritative.

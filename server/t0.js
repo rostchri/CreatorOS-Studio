@@ -9,9 +9,12 @@
    Two families: anything evoking a minor, and sexual content or nudity
    (the app produces SFW only).
    ============================================================ */
+/* LOCAL FORK PATCH: the minors part of the substring list, on its own: in adult mode the front end
+   only pre-checks these (GET /api/health), the render then applies t0Mineur or t0Hit (jobs.js). */
+export const T0_BLOCKLIST_MINEURS = ['underage', 'barely legal', 'schoolgirl', 'young girl', 'loli', 'jeune fille mineure']
 export const T0_BLOCKLIST = [
   // childhood terms are in T0_ENFANCE_* (whole words); only substrings without false positives remain here
-  'underage', 'barely legal', 'schoolgirl', 'young girl', 'loli', 'jeune fille mineure',
+  ...T0_BLOCKLIST_MINEURS,
   'naked', 'fully nude', 'nude body', 'nsfw', 'topless', 'nipple', 'genital',
   'pussy', 'penis', 'porn', 'sex scene', 'see-through', 'seins nus',
   'nude woman', 'nude girl', 'nudity', 'erotic', 'lingerie',
