@@ -134,6 +134,13 @@ export const CONFIG = {
   contenuAdulte: process.env.CREATOROS_CONTENU_ADULTE === '1' && !(process.env.CREATOROS_OWNER_KEY || '').trim()
     && (['127.0.0.1', 'localhost', '::1'].includes(process.env.CREATOROS_HOST || '127.0.0.1')
         || process.env.CREATOROS_RESEAU_PRIVE === '1'),
+  // LOCAL FORK PATCH: CREATOROS_ADULTE_PERSONNAGES_FICTIFS=1 etend le mode adulte aux personnages
+  // fictifs, c'est-a-dire crees par le createur de personnages a partir d'un portrait rendu sur
+  // texte seul (aucune photo, aucune reference, aucune LoRA). Le drapeau `fictif` est pose par le
+  // createur uniquement, retire a chaque changement de photo de profil, jamais accepte via l'API ;
+  // une LoRA sur le personnage le neutralise. Le plancher « mineurs » reste actif. Sans contenuAdulte
+  // cette option ne fait rien.
+  adultePersonnagesFictifs: process.env.CREATOROS_ADULTE_PERSONNAGES_FICTIFS === '1',
 }
 
 CONFIG.mediaDir = path.join(CONFIG.dataDir, 'media')

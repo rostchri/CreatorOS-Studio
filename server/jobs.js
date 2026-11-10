@@ -4175,7 +4175,13 @@ async function runJob(job, isRetry = false, connRetried = false) {
        (an imported LoRA may carry a real face), no imported photo (a source of unknown origin counts as
        imported). The minors floor always applies. */
     const entrees = [job.sourceImage, job.endImage, ...(job.references ?? []), ...(job.keyframes ?? []).map(k => k.image)].filter(x => typeof x === 'string' && x.trim())
-    const adulteLibre = CONFIG.contenuAdulte && (!job.personaId || job.personaId === SANS_PERSONNAGE)
+    /* LOCAL FORK PATCH: a fictitious character (made by the character creator from a text-only
+       portrait, profile photo never replaced, see persona.marquerFictif) counts like "no character",
+       as long as it carries no LoRA (a LoRA may hold a real face). */
+    const pf = job.personaId && job.personaId !== SANS_PERSONNAGE ? persona(job.personaId) : null
+    const figureFictive = CONFIG.adultePersonnagesFictifs && pf?.fictif === true
+      && !pf.loras.length && !pf.lorasKlein.length && !(pf.lorasFlux3 ?? []).length && !pf.videoLoras.length
+    const adulteLibre = CONFIG.contenuAdulte && (!job.personaId || job.personaId === SANS_PERSONNAGE || figureFictive)
       && !(job.loras ?? []).length && !(job.videoLoras ?? []).length
       && entrees.every(n => store.origineInput(path.basename(n)) === 'genere')
     /* The outfit directive only applies if there is someone to dress: on an empty landscape,

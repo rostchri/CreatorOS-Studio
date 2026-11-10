@@ -108,6 +108,8 @@ function normaliser(f, actif) {
     credit: creditDe(f?.credit),
     garderobe: garderobeDe(f?.garderobe),
     voix: voixDe(f?.voix),
+    // LOCAL FORK PATCH: set only by the character creator (marquerFictif), never by enregistrer()
+    fictif: f?.fictif === true,
   }
 }
 
@@ -262,11 +264,25 @@ export function creer({ name, depuis } = {}) {
   for (let n = 2; d.personas.some(p => p.id === id); n++) id = `${base}_${n}`
   const modele = depuis ? d.personas.find(p => p.id === depuis) : null
   d.personas.push(modele
-    ? { ...modele, id, name: nom }
+    ? { ...modele, id, name: nom, fictif: false }
     : { id, name: nom, trigger: '', description: '', preamble: '', loras: [], lorasKlein: [], lorasFlux3: [], videoLoras: [] })
   d.active = id
   ecrireFichier(d)
   return persona(id)
+}
+
+/** LOCAL FORK PATCH: "fictitious" flag (see CONFIG.adultePersonnagesFictifs). Set by the character
+ *  creator when the chosen portrait is a text-only render; cleared whenever the profile photo
+ *  changes. Not reachable through enregistrer(): no client can set it. False if the id is unknown. */
+export function marquerFictif(id, valeur) {
+  const d = lireFichier()
+  const p = d.personas.find(x => x.id === id)
+  if (!p) return false
+  if ((p.fictif === true) === (valeur === true)) return true
+  if (valeur === true) p.fictif = true
+  else delete p.fictif
+  ecrireFichier(d)
+  return true
 }
 
 /** Makes a character active. False if the id is unknown. */

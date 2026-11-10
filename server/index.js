@@ -26,7 +26,7 @@ import * as carrousel from './carrousel.js'
 import * as captions from './captions.js'
 import { ensurePoster } from './poster.js'
 import { T0_BLOCKLIST, t0Hit, t0Mineur } from './t0.js'
-import { SANS_PERSONNAGE, persona, personas, identityPreambleFor, enregistrer as enregistrerPersona, champsFiges, creer as creerPersona, activer as activerPersona, supprimer as supprimerPersona } from './persona.js'
+import { SANS_PERSONNAGE, persona, personas, identityPreambleFor, enregistrer as enregistrerPersona, champsFiges, creer as creerPersona, activer as activerPersona, supprimer as supprimerPersona, marquerFictif } from './persona.js'
 import { lireCreateur, ecrireCreateur } from './createur.js'
 import { etatCloud, importerCloud, tacheCloud } from './cloud-loras.js'
 import { H3_MESSAGE_DEMO, OPS_RELANCABLES, relancerSpecial, avancementEntrainements, enqueueEntrainement, enqueueDoublage, enqueueRecadrage, enqueueObjet3d, enqueueMusique, cheminModele, enqueueParole, enqueueReshoot, enqueueCleanPlate, enqueueEffetLtx, enqueueTransition, EFFETS_TRANSITION, enqueueDanse3d, STUDIOS_DANSE, enqueueDetour, enqueueTransparent, enqueueProfondeur, enqueueSeedvr, enqueueStage, sceneReshoot, deposerAvecCle, enqueue, enqueueParPlans, enqueueInpaint, enqueueInpaintVideo, enqueueUpscale, enqueueFinition, enqueueEssayage, enqueuePhotodump, enqueueStyleRef, enqueuePhotoHd, cancelJob, promoteJob, reorderQueue, RENDER_RATES, driverMeta, recoverQueue, queueDepth, placeDansFile, RECIPES, VIDEO_ENGINES, recettesServies, DEFAULT_VIDEO_ENGINE, MOTION_RECIPES, DEPRECATED_RECIPES } from './jobs.js'
@@ -880,12 +880,16 @@ const AVATAR_EXTS = ['.png', '.jpg', '.webp']
 const idAvatar = id => String(id ?? personas().active ?? 'default').replace(/[^a-z0-9_]/g, '') || 'default'
 const avatarDir = id => path.join(AVATAR_DIR, idAvatar(id))
 const avatarFile = id => AVATAR_EXTS.map(e => path.join(avatarDir(id), `avatar${e}`)).find(f => fs.existsSync(f)) || null
+/* LOCAL FORK PATCH: a new profile photo may show anyone: the character loses its "fictitious"
+   flag (only the character creator sets it, from a text-only portrait). */
+const plusFictif = id => { for (const p of personas().list) if (idAvatar(p.id) === idAvatar(id)) marquerFictif(p.id, false) }
 /* Legacy layout (a single photo at the root): attached to the active character. */
 {
   const ancien = AVATAR_EXTS.map(e => path.join(AVATAR_DIR, `avatar${e}`)).find(f => fs.existsSync(f))
   if (ancien && personas().active && !avatarFile()) {
     fs.mkdirSync(avatarDir(), { recursive: true })
     fs.renameSync(ancien, path.join(avatarDir(), path.basename(ancien)))
+    plusFictif()
   }
 }
 function avatarMeta(id) {
@@ -911,6 +915,7 @@ app.put('/api/persona/avatar', async (req, reply) => {
   fs.mkdirSync(dir, { recursive: true })
   for (const e of AVATAR_EXTS) fs.rmSync(path.join(dir, `avatar${e}`), { force: true })
   fs.writeFileSync(path.join(dir, `avatar${ext === '.jpeg' ? '.jpg' : ext}`), buf)
+  plusFictif(id)
   app.log.info(`photo de profil ${idAvatar(id)} → ${(buf.length / 1e6).toFixed(1)} Mo`)
   return avatarMeta(id)
 })
@@ -936,6 +941,7 @@ app.put('/api/persona/avatar/depuis-asset', async (req, reply) => {
   } catch (e) { fs.rmSync(tmp, { force: true }); reply.code(422); return { error: `recadrage impossible : ${e.message}` } }
   for (const e of AVATAR_EXTS) fs.rmSync(path.join(dir, `avatar${e}`), { force: true })
   fs.renameSync(tmp, path.join(dir, 'avatar.jpg'))
+  plusFictif(id)
   return avatarMeta(id)
 })
 

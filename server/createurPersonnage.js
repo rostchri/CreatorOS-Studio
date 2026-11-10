@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { CONFIG } from './config.js'
 import * as store from './db.js'
 import { enqueue, enqueueEntrainement } from './jobs.js'
-import { activer, creer as creerPersona, enregistrer as enregistrerPersona, persona as personaActif, SANS_PERSONNAGE } from './persona.js'
+import { activer, creer as creerPersona, enregistrer as enregistrerPersona, marquerFictif, persona as personaActif, SANS_PERSONNAGE } from './persona.js'
 import { t0Hit } from './t0.js'
 
 const nettoie = (v, n = 80) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, n)
@@ -23,9 +23,12 @@ function lireTraits(t = {}) {
 }
 const description = x => [`a ${x.age}-year-old adult ${x.genre}`, x.origine, x.cheveux && `${x.cheveux} hair`, x.yeux && `${x.yeux} eyes`, x.signes].filter(Boolean).join(', ')
 
+// LOCAL FORK PATCH: shared with portraitSurTexteSeul (recognizes the generator's own portraits)
+const PORTRAIT_GENERATEUR = 'Photorealistic head-and-shoulders studio portrait of '
+
 export function propositions(traits) {
   const x = lireTraits(traits)
-  const texte = `Photorealistic head-and-shoulders studio portrait of ${description(x)}, wearing ${x.style || 'simple casual clothes'}, neutral light grey background, soft even light, sharp focus on the face, natural skin texture, looking at the camera`
+  const texte = `${PORTRAIT_GENERATEUR}${description(x)}, wearing ${x.style || 'simple casual clothes'}, neutral light grey background, soft even light, sharp focus on the face, natural skin texture, looking at the camera`
   return Array.from({ length: 4 }, () => enqueue({ mode: 'photo', register: 'sfw', personaId: SANS_PERSONNAGE, purpose: 'creative', photoEngine: 'krea',
     composedPositive: texte, userPrompt: texte, composedNegative: '', width: 1024, height: 1024 }).id)
 }
@@ -46,6 +49,24 @@ try {
 } catch { /* no saved tracking */ }
 const garder = () => { try { fs.writeFileSync(FICHIER_SUIVIS, JSON.stringify([...suivis.values()])) } catch (e) { console.warn(`[création] suivi non enregistré : ${e.message || e}`) } }
 
+/* LOCAL FORK PATCH: true only if the asset is a finished photo of a job that started from text
+   alone: no character, no source/end image, no reference, no keyframe, no LoRA. Such a face comes
+   from no real person. Any doubt (missing job, unreadable payload) answers false. */
+function portraitSurTexteSeul(a) {
+  const j = a?.job_id ? store.getJob(a.job_id) : null
+  if (!j || j.status !== 'done') return false
+  let pl
+  try { pl = JSON.parse(j.payload ?? 'null') } catch { return false }
+  if (!pl || typeof pl !== 'object') return false
+  const vide = v => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
+  /* only the generator's own portraits: its prompt template states an adult of 21 to 80 */
+  const p = String(pl.composedPositive ?? '')
+  if (!p.startsWith(PORTRAIT_GENERATEUR) || !/^a \d{2}-year-old adult /.test(p.slice(PORTRAIT_GENERATEUR.length))) return false
+  return pl.mode === 'photo' && pl.op !== 'edit' && pl.personaId === SANS_PERSONNAGE
+    && vide(pl.sourceImage) && vide(pl.endImage) && vide(pl.references) && vide(pl.keyframes)
+    && vide(pl.loras) && vide(pl.videoLoras) && pl.refVisage !== true
+}
+
 export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
   // engines to train: the checked list, or the legacy boolean (Klein only)
   const aEntrainer = Array.isArray(moteurs) ? moteurs.map(String).filter(m => m === 'klein' || m === 'krea').filter((m, i, l) => l.indexOf(m) === i) : entrainer ? ['klein'] : []
@@ -62,7 +83,11 @@ export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
   enregistrerPersona({ preamble: description(x), description: `${n} : ${description(x)}, ${x.style}`, credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage fictif créé dans le studio, libre' } }, p.id)
   const dossier = path.join(CONFIG.mediaDir, '.persona', p.id.replace(/[^a-z0-9_]/g, ''))
   fs.mkdirSync(dossier, { recursive: true })
+  // LOCAL FORK PATCH: a deleted character's photo with the same id would win over avatar.jpg (png first)
+  for (const e of ['.png', '.webp']) fs.rmSync(path.join(dossier, `avatar${e}`), { force: true })
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=512:512', '-q:v', '3', path.join(dossier, 'avatar.jpg')])
+  // LOCAL FORK PATCH: the character is fictitious only if its portrait comes from a text-only render
+  if (portraitSurTexteSeul(a)) marquerFictif(p.id, true)
   const planche = enqueue({ mode: 'photo', register: 'sfw', personaId: p.id, purpose: 'creative', photoEngine: 'klein', composedNegative: '', width: 1344, height: 768,
     composedPositive: `Character reference sheet of the same person: front view, three-quarter view, profile and back view, full body, same outfit (${x.style || 'casual clothes'}), plain light grey background, even studio light`,
     userPrompt: 'planche de référence' }).id
