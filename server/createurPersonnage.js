@@ -10,6 +10,8 @@ import * as store from './db.js'
 import { enqueue, enqueueEntrainement } from './jobs.js'
 import { activer, creer as creerPersona, enregistrer as enregistrerPersona, marquerFictif, persona as personaActif, SANS_PERSONNAGE } from './persona.js'
 import { t0Hit } from './t0.js'
+// LOCAL FORK PATCH: the generator's portrait prompt and its text-only check (see fictif.js)
+import { PORTRAIT_GENERATEUR, portraitSurTexteSeul } from './fictif.js'
 
 const nettoie = (v, n = 80) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, n)
 
@@ -22,9 +24,6 @@ function lireTraits(t = {}) {
   return x
 }
 const description = x => [`a ${x.age}-year-old adult ${x.genre}`, x.origine, x.cheveux && `${x.cheveux} hair`, x.yeux && `${x.yeux} eyes`, x.signes].filter(Boolean).join(', ')
-
-// LOCAL FORK PATCH: shared with portraitSurTexteSeul (recognizes the generator's own portraits)
-const PORTRAIT_GENERATEUR = 'Photorealistic head-and-shoulders studio portrait of '
 
 export function propositions(traits) {
   const x = lireTraits(traits)
@@ -48,24 +47,6 @@ try {
     if (c?.id && Date.now() - (c.debut ?? 0) < 7 * 86400_000) suivis.set(c.id, c)
 } catch { /* no saved tracking */ }
 const garder = () => { try { fs.writeFileSync(FICHIER_SUIVIS, JSON.stringify([...suivis.values()])) } catch (e) { console.warn(`[création] suivi non enregistré : ${e.message || e}`) } }
-
-/* LOCAL FORK PATCH: true only if the asset is a finished photo of a job that started from text
-   alone: no character, no source/end image, no reference, no keyframe, no LoRA. Such a face comes
-   from no real person. Any doubt (missing job, unreadable payload) answers false. */
-function portraitSurTexteSeul(a) {
-  const j = a?.job_id ? store.getJob(a.job_id) : null
-  if (!j || j.status !== 'done') return false
-  let pl
-  try { pl = JSON.parse(j.payload ?? 'null') } catch { return false }
-  if (!pl || typeof pl !== 'object') return false
-  const vide = v => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
-  /* only the generator's own portraits: its prompt template states an adult of 21 to 80 */
-  const p = String(pl.composedPositive ?? '')
-  if (!p.startsWith(PORTRAIT_GENERATEUR) || !/^a \d{2}-year-old adult /.test(p.slice(PORTRAIT_GENERATEUR.length))) return false
-  return pl.mode === 'photo' && pl.op !== 'edit' && pl.personaId === SANS_PERSONNAGE
-    && vide(pl.sourceImage) && vide(pl.endImage) && vide(pl.references) && vide(pl.keyframes)
-    && vide(pl.loras) && vide(pl.videoLoras) && pl.refVisage !== true
-}
 
 export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
   // engines to train: the checked list, or the legacy boolean (Klein only)

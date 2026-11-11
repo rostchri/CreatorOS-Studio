@@ -23,6 +23,8 @@ import { blocOllama, pourRendu } from './gpu.js'
 import { aReecrire, reecrireFlux3 } from './flux3Upsampler.js'
 import * as sdk from './transport-sdk.js'
 import * as store from './db.js'
+// LOCAL FORK PATCH: attested fictitious LoRAs (adult mode for fictitious characters)
+import { attesterLora, lorasDuPersonnageFictives } from './fictif.js'
 import { enregistrer as enregistrerPersona, SANS_PERSONNAGE, identityPreambleFor, HUMAIN, lorasPhoto, persona, personaDuDepot, triggerPrefix } from './persona.js'
 import { ensurePoster } from './poster.js'
 import { controlerJob } from './controle.js'
@@ -2343,6 +2345,12 @@ async function runEntrainement(job, t0) {
   fs.mkdirSync(path.dirname(full), { recursive: true })
   fs.copyFileSync(lora, full)
   if (!job.entrainementEssai) {
+    /* LOCAL FORK PATCH: attested before it is attached; a refusal only means the character's
+       adult mode does not cover this LoRA, the training itself succeeded */
+    try {
+      const refus = await attesterLora(nom, job.personaId, job.id, job.entrainementImages ?? [])
+      console.log(`[job ${job.id}] LoRA ${nom} ${refus ? `non attestée fictive : ${refus}` : 'attestée fictive'}`)
+    } catch (e) { console.warn(`[job ${job.id}] attestation de ${nom} impossible : ${e.message || e}`) }
     const p = persona(job.personaId)
     const champ = moteur === 'krea' ? 'loras' : moteur === 'flux3' ? 'lorasFlux3' : 'lorasKlein'
     enregistrerPersona({ [champ]: [...(p[champ] ?? []).filter(l => l.name !== nom), { name: nom, strength: 1 }], ...(p.trigger ? {} : { trigger: job.entrainementDeclencheur }) }, job.personaId)
@@ -4178,10 +4186,11 @@ async function runJob(job, isRetry = false, connRetried = false) {
     const entrees = [job.sourceImage, job.endImage, ...(job.references ?? []), ...(job.keyframes ?? []).map(k => k.image)].filter(x => typeof x === 'string' && x.trim())
     /* LOCAL FORK PATCH: a fictitious character (made by the character creator from a text-only
        portrait, profile photo never replaced, see persona.marquerFictif) counts like "no character",
-       as long as it carries no LoRA (a LoRA may hold a real face). */
+       as long as each of its LoRAs is attested fictitious for it (trained on its own fictitious
+       renders, file unchanged, see fictif.js): any other LoRA may hold a real face. */
     const pf = job.personaId && job.personaId !== SANS_PERSONNAGE ? persona(job.personaId) : null
-    const figureFictive = CONFIG.adultePersonnagesFictifs && pf?.fictif === true
-      && !pf.loras.length && !pf.lorasKlein.length && !(pf.lorasFlux3 ?? []).length && !pf.videoLoras.length
+    const figureFictive = CONFIG.adultePersonnagesFictifs && pf?.fictif === true && pf.id === job.personaId
+      && await lorasDuPersonnageFictives(pf)
     const adulteLibre = CONFIG.contenuAdulte && (!job.personaId || job.personaId === SANS_PERSONNAGE || figureFictive)
       && !(job.loras ?? []).length && !(job.videoLoras ?? []).length
       && entrees.every(n => store.origineInput(path.basename(n)) === 'genere')
