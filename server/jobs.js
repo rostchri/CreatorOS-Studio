@@ -2339,8 +2339,9 @@ async function runEntrainement(job, t0) {
     avancementEntrainements.set(job.id, { pas: n, total: job.entrainementPas, debut: avancementEntrainements.get(job.id)?.debut ?? Date.now() })
     if (n - dernier >= 25) { dernier = n; console.log(`[job ${job.id}] entraînement ${moteur} ${n}/${job.entrainementPas}`) }
   }).finally(() => avancementEntrainements.delete(job.id))
-  const nom = `${String(job.personaId).replace(/[^a-z0-9_]/g, '')}_${moteur}_${job.id.slice(6)}.safetensors`
-  fs.copyFileSync(lora, path.join(CONFIG.lorasDir, nom))
+  const { name: nom, full } = comfy.loraDestination(`${String(job.personaId).replace(/[^a-z0-9_]/g, '')}_${moteur}_${job.id.slice(6)}.safetensors`)
+  fs.mkdirSync(path.dirname(full), { recursive: true })
+  fs.copyFileSync(lora, full)
   if (!job.entrainementEssai) {
     const p = persona(job.personaId)
     const champ = moteur === 'krea' ? 'loras' : moteur === 'flux3' ? 'lorasFlux3' : 'lorasKlein'

@@ -850,9 +850,9 @@ app.post('/api/persona/lora', async (req, reply) => {
   const brut = String(req.query.nom || '').replace(/\.safetensors$/i, '')
   const stem = brut.normalize('NFD').replace(/[^\w.-]+/g, '_').replace(/^\.+/, '').slice(0, 80)
   if (!stem) { reply.code(400); return { error: 'nom de fichier manquant' } }
-  const nom = `${stem}.safetensors`, cible = path.join(CONFIG.lorasDir, nom)
+  const { name: nom, full: cible } = comfy.loraDestination(`${stem}.safetensors`)
   if (fs.existsSync(cible) && req.query.remplacer !== '1') { reply.code(409); return { error: `« ${nom} » existe déjà`, nom } }
-  fs.mkdirSync(CONFIG.lorasDir, { recursive: true })
+  fs.mkdirSync(path.dirname(cible), { recursive: true })
   const tmp = `${cible}.part`
   let octets = 0
   try {
@@ -2143,7 +2143,7 @@ app.get('/api/entrainement', async () => {
       : Math.max(0, (p.estimatedMs ?? 0) - ecoule)
     return { id: r.id, personaId: r.persona_id, statut: r.status, moteur: p.entrainementMoteur ?? 'klein', declencheur: p.entrainementDeclencheur ?? null, images: p.entrainementImages?.length ?? null,
       pas: av?.pas ?? (r.status === 'done' ? total : null), total, debut: r.started_at, fin: r.finished_at, resteMs, erreur: r.error ? String(r.error).slice(0, 200) : null,
-      lora: r.status === 'done' && !p.entrainementEssai ? `${String(r.persona_id).replace(/[^a-z0-9_]/g, '')}_${p.entrainementMoteur ?? 'klein'}_${r.id.slice(6)}.safetensors` : null }
+      lora: r.status === 'done' && !p.entrainementEssai ? comfy.loraDestination(`${String(r.persona_id).replace(/[^a-z0-9_]/g, '')}_${p.entrainementMoteur ?? 'klein'}_${r.id.slice(6)}.safetensors`).name : null }
   })
   const moteurs = Object.entries(MOTEURS_ENTRAINEMENT).map(([id, m]) => ({ id, nom: m.nom, pret: moteurEntrainementPret(id), secParPas: m.secParPas, preparationS: m.preparationS }))
   return { pret: aiToolkitPret(), moteurs, travaux }

@@ -57,6 +57,12 @@ export const CONFIG = {
      classify each file by architecture (header read). */
   lorasDir: process.env.CREATOROS_LORAS || path.join(comfyDir, 'models/loras'),
 
+  /* Subfolder of lorasDir for the LoRAs this instance produces (training,
+     upload). Listed next to the top level as `<sub>/<file>`, the name ComfyUI
+     resolves natively. Other subfolders stay hidden. A bare folder name only;
+     unset or invalid = top level only, as before. */
+  lorasPropres: (s => /^[\w-][\w.-]*$/.test(s) ? s : '')(process.env.CREATOROS_LORAS_PROPRES ?? ''),
+
   /* Z-Image ControlNet patch (Fun-CN Union), loaded by ModelPatchLoader.
      Lives in models/model_patches/, not models/controlnet/: it is a model
      patch, not a ControlNet in the standard node sense. */

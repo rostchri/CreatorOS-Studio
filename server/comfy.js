@@ -1571,20 +1571,38 @@ function loraTags(name) {
 /** Info for ONE LoRA by file name. The server resolves the trigger itself
  *  rather than trusting what the front end sends. */
 export function loraInfo(name) {
-  if (typeof name !== 'string' || !name || name.includes('/') || name.includes('\\')) return null
+  if (typeof name !== 'string' || !name || name.includes('\\')) return null
+  const parts = name.split('/')
+  if (parts.length > 2 || parts.some(p => !p || p === '.' || p === '..')) return null
+  // one subfolder level at most, and only the instance's own one
+  if (parts.length === 2 && (!CONFIG.lorasPropres || parts[0] !== CONFIG.lorasPropres)) return null
   const full = path.join(CONFIG.lorasDir, name)
   if (!full.startsWith(CONFIG.lorasDir + path.sep) || !fs.existsSync(full)) return null
   return { name, ...withTable(name, loraProbe(full)), ...loraTags(name) }
 }
 
+/** Where this instance writes a LoRA it produces: the name to reference
+ *  (`<lorasPropres>/<file>`, or the bare file) and its absolute path. */
+export function loraDestination(fichier) {
+  const name = CONFIG.lorasPropres ? `${CONFIG.lorasPropres}/${fichier}` : fichier
+  return { name, full: path.join(CONFIG.lorasDir, name) }
+}
+
 /** Lists the folder's LoRAs, classified. `arch` says what is actually loadable;
- *  the rest is returned too, flagged, so the UI can show it greyed out. */
+ *  the rest is returned too, flagged, so the UI can show it greyed out.
+ *  Top level only, plus the instance's own subfolder (lorasPropres). */
 export function listLoras() {
   let files = []
   try {
     files = fs.readdirSync(CONFIG.lorasDir).filter(f => f.endsWith('.safetensors'))
   } catch (e) {
     return { dir: CONFIG.lorasDir, error: String(e.message || e), loras: [] }
+  }
+  if (CONFIG.lorasPropres) {
+    try {
+      files.push(...fs.readdirSync(path.join(CONFIG.lorasDir, CONFIG.lorasPropres))
+        .filter(f => f.endsWith('.safetensors')).map(f => `${CONFIG.lorasPropres}/${f}`))
+    } catch { /* folder not created yet: the first training creates it */ }
   }
   const loras = files.sort().map(name => {
     const full = path.join(CONFIG.lorasDir, name)
