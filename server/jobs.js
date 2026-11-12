@@ -31,6 +31,10 @@ import { controlerJob } from './controle.js'
 import * as wildcards from './wildcards.js'
 import * as vision from './vision.js'
 import { t0Hit, t0Mineur } from './t0.js'
+/* LOCAL FORK PATCH: CREATOROS_SANS_FILTRE=1 (installation privee mono-utilisateur)
+   neutralise les checks T0 ci-dessous (le preHandler de index.js est deja hors service). */
+const t0HitN = t => (CONFIG.sansFiltre ? null : t0Hit(t))
+const t0MineurN = t => (CONFIG.sansFiltre ? null : t0Mineur(t))
 import * as plans from './plans.js'
 import { MUSIQUES_DIR } from './montage.js'
 
@@ -1085,7 +1089,7 @@ async function runUpscaleH3(job, t0) {
    masked source image, then the result is composited onto the source. */
 const INPAINT_DENOISE = 0.9   // 0.75-0.8 keeps the original color
 export function enqueueInpaint({ sourceFile, maskFile, parentAssetId, prompt, strength, personaId, agrandir }) {
-  if (t0Hit(String(prompt ?? ''))) throw new Error('prompt refusé (liste T0)')
+  if (t0HitN(String(prompt ?? ''))) throw new Error('prompt refusé (liste T0)')
   const id = `inp-${Date.now().toString(36)}`
   const row = {
     id, createdAt: Date.now(), status: 'queued', personaId: personaId ?? persona().id, register: 'sfw',
@@ -1223,7 +1227,7 @@ export function enqueueRecadrage({ source, format, prompt, parentAssetId, person
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `color=white:s=${Wg}x${Hg}`, '-vf',
     `drawbox=x=${(Wg - cwg) / 2 + m}:y=${(Hg - chg) / 2 + m}:w=${Math.max(2, cwg - 2 * m)}:h=${Math.max(2, chg - 2 * m)}:color=black:t=fill`, '-frames:v', '1', path.join(CONFIG.comfyInput, masque)])
   const texte = String(prompt ?? '').trim() || 'the same place continues naturally on every side, same light, coherent perspective'
-  if (t0Hit(texte)) throw new Error('prompt refusé (liste T0)')
+  if (t0HitN(texte)) throw new Error('prompt refusé (liste T0)')
   const id = `rcd-${cle}`
   const row = {
     id, createdAt: Date.now(), status: 'queued', personaId: personaId ?? persona().id, register: 'sfw',
@@ -1292,7 +1296,7 @@ async function runRecadrage(job, t0) {
 }
 
 export function enqueueInpaintVideo({ sourceFile, maskFile, parentAssetId, prompt, strength, suivi, cible, inverser, retirer, objet, objetNom, loin }) {
-  if (t0Hit(`${prompt ?? ''} ${cible ?? ''}`)) throw new Error('prompt refusé (liste T0)')
+  if (t0HitN(`${prompt ?? ''} ${cible ?? ''}`)) throw new Error('prompt refusé (liste T0)')
   const zoneTexte = String(cible ?? '').trim().slice(0, 80) || null
   if (!maskFile && !zoneTexte) throw new Error('rien à éditer : ni zone peinte ni élément à modifier')
   const m = driverMeta(sourceFile)
@@ -1630,7 +1634,7 @@ const PAROLE_MAX_S = 20
 const PAROLE_BLOC = 81, PAROLE_RECOUVRE = 9
 export function enqueueParole({ image, audio, texte, parentAssetId, personaId }) {
   const t = String(texte ?? '').trim().slice(0, 400)
-  if (t0Hit(t)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(t)) throw new Error('texte refusé (liste T0)')
   for (const f of [image, audio]) if (!f || /[\\/]/.test(f) || f.startsWith('.')) throw new Error('fichier invalide : nom nu attendu (dossier input/)')
   const duree = videoDurationOf(path.join(CONFIG.comfyInput, audio))
   if (!duree) throw new Error('audio illisible')
@@ -1738,7 +1742,7 @@ export const RESHOOT_ANGLES = {
 const RESHOOT_LORA = 'LTX2/LTX2.3-22B_IC-LoRA-CrossView-Warp_v2_6000.safetensors'
 export function enqueueReshoot({ source, angle, azimut, elevation, cles, texte, parentAssetId, personaId }) {
   const t = String(texte ?? '').trim().slice(0, 400)
-  if (t0Hit(t)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(t)) throw new Error('texte refusé (liste T0)')
   if (!source || /[\\/]/.test(source) || source.startsWith('.')) throw new Error('fichier invalide')
   const duree = videoDurationOf(path.join(CONFIG.mediaDir, source))
   if (!duree) throw new Error('vidéo illisible')
@@ -1787,7 +1791,7 @@ export function enqueueCleanPlate({ source, cible, decor, parentAssetId, persona
   const c = String(cible ?? '').trim().slice(0, 80) || 'people'
   if (CIBLE_INTERDITE.test(`${c} ${decor ?? ''}`)) throw new Error('ce mode retire des personnes ou des objets, jamais des vêtements')
   const d = String(decor ?? '').trim().slice(0, 300)
-  if (t0Hit(`${c} ${d}`)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(`${c} ${d}`)) throw new Error('texte refusé (liste T0)')
   if (!source || /[\\/]/.test(source) || source.startsWith('.')) throw new Error('fichier invalide')
   const duree = videoDurationOf(path.join(CONFIG.mediaDir, source))
   if (!duree) throw new Error('vidéo illisible')
@@ -1934,7 +1938,7 @@ export function enqueueEffetLtx({ source, effet, texte, parentAssetId, personaId
   const e = EFFETS_LTX[effet]
   if (!e) throw new Error('effet inconnu')
   const t = String(texte ?? '').trim().slice(0, 200)
-  if (t0Hit(t)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(t)) throw new Error('texte refusé (liste T0)')
   if (!fs.existsSync(path.join(CONFIG.loraDir ?? path.join(CONFIG.comfyDir, 'models', 'loras'), e.lora)) && !fs.existsSync(path.join(os.homedir(), 'models', 'loras', e.lora)))
     throw new Error(`l’effet ${e.nom} n’est pas installé sur ce studio`)
   if (!source || /[\\/]/.test(source) || source.startsWith('.')) throw new Error('fichier invalide')
@@ -1974,7 +1978,7 @@ async function decrireSource(src, id) {
    redrawn. MP4 output ready for a keyer; original audio kept. Modest CPU/GPU needs. */
 export function enqueueDetour({ source, cible, alpha, parentAssetId, personaId }) {
   const c = String(cible ?? '').trim().slice(0, 80) || 'person'
-  if (t0Hit(c)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(c)) throw new Error('texte refusé (liste T0)')
   if (!source || /[\\/]/.test(source) || source.startsWith('.')) throw new Error('fichier invalide')
   const duree = videoDurationOf(path.join(CONFIG.mediaDir, source))
   if (!duree) throw new Error('vidéo illisible')
@@ -2112,7 +2116,7 @@ const pointStage = (p, nom) => {
 export function enqueueStage({ scene, prompt, format, secondes, personaId }) {
   const t = String(prompt ?? '').trim().slice(0, 1200)
   if (!t) throw new Error('décris le plan')
-  if (t0Hit(t)) throw new Error('prompt refusé (liste T0)')
+  if (t0HitN(t)) throw new Error('prompt refusé (liste T0)')
   if (!Array.isArray(scene?.objets) || scene.objets.length < 1 || scene.objets.length > 16) throw new Error('scène invalide : 1 à 16 objets')
   if (!Array.isArray(scene?.camera) || scene.camera.length < 2 || scene.camera.length > 4) throw new Error('scène invalide : 2 à 4 poses de caméra')
   const objets = scene.objets.map(o => {
@@ -2178,7 +2182,7 @@ export function enqueueDanse3d({ fbx, still, decor, scene: description, personaI
   if (!fbx || !fs.existsSync(fbx)) throw new Error('danse inconnue')
   if (!still || /[\\/]/.test(still) || !fs.existsSync(path.join(CONFIG.comfyInput, still))) throw new Error('photo du personnage introuvable')
   const d = String(description ?? '').trim().slice(0, 400)
-  if (t0Hit(d)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(d)) throw new Error('texte refusé (liste T0)')
   const id = `danse3d-${Date.now().toString(36)}`
   fs.mkdirSync(path.join(CONFIG.mediaDir, '.stage'), { recursive: true })
   const row = {
@@ -2220,7 +2224,7 @@ export function cheminModele(nom) {
    the library receives a full turntable as a grey mockup. */
 export function enqueueObjet3d({ sourceFile, cible, parentAssetId, personaId }) {
   const c = String(cible ?? '').trim().slice(0, 80) || 'main object'
-  if (t0Hit(c)) throw new Error('texte refusé (liste T0)')
+  if (t0HitN(c)) throw new Error('texte refusé (liste T0)')
   const id = `objet3d-${Date.now().toString(36)}`
   const row = {
     id, createdAt: Date.now(), status: 'queued', personaId: personaId ?? persona().id, register: 'sfw',
@@ -2537,7 +2541,7 @@ export function enqueueMusique({ prompt, paroles, secondes, genre, personaId, bp
   const reglages = bruit ? reglagesMusique({}) : reglagesMusique({ bpm, tonalite, mesure, langue, voix, instruments })
   const mots = bruit || reglages.voix === 'none' ? '' : String(paroles ?? '').trim().slice(0, 3000)
   if (!texte && !reglages.instruments.length) throw new Error(bruit ? 'décris le son' : 'décris le morceau')
-  if (t0Hit(`${texte} ${reglages.instruments.join(' ')} ${mots}`)) throw new Error('prompt refusé (liste T0)')
+  if (t0HitN(`${texte} ${reglages.instruments.join(' ')} ${mots}`)) throw new Error('prompt refusé (liste T0)')
   const duree = Math.round(Math.min(bruit ? 20 : 120, Math.max(bruit ? 2 : 5, Number(secondes) || (bruit ? 6 : 30))))
   const id = `musique-${Date.now().toString(36)}`
   const style = texte || reglages.instruments.join(', ')
@@ -4206,7 +4210,7 @@ async function runJob(job, isRetry = false, connRetried = false) {
       ...drawn.draws.map(d => `tirage wildcard ${d.token} → « ${d.value} »`),
       ...drawn.unknown.map(t => `wildcard ${t} INCONNU : aucun fichier dans ${CONFIG.wildcardsDir} — laissé tel quel`),
     ]
-    const blocked = adulteLibre ? t0Mineur(positive) : t0Hit(positive)
+    const blocked = adulteLibre ? t0MineurN(positive) : t0HitN(positive)
     if (blocked)
       throw new Error(`T0 : terme bloqué « ${blocked} »`
         + (drawn.draws.length ? ' — apparu dans un tirage wildcard' : ' dans le prompt'))

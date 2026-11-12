@@ -143,6 +143,9 @@ function mineurDans(v, cle = '') {
   return null
 }
 app.addHook('preHandler', async (req, reply) => {
+  // LOCAL FORK PATCH: CREATOROS_SANS_FILTRE=1 (installation privee mono-utilisateur)
+  // desactive le filtre de contenu preHandler dans son entierete.
+  if (CONFIG.sansFiltre) return
   if (req.method !== 'POST' && req.method !== 'PUT') return
   const route = `${req.method} ${req.routeOptions?.url}`
   if (!req.url.startsWith('/api/') || sansFiltreContenu.has(route) || Buffer.isBuffer(req.body)) return
@@ -331,8 +334,9 @@ app.get('/api/health', async req => {
     verrou: !!CONFIG.cleProprietaire,
     // The front end reads these lists on mount instead of keeping a copy.
     /* LOCAL FORK PATCH: in adult mode the full list would block every adult prompt in the browser
-       before the server can decide (character, LoRA, photo provenance): only the minors floor here. */
-    t0Blocklist: CONFIG.contenuAdulte ? T0_BLOCKLIST_MINEURS : T0_BLOCKLIST,
+       before the server can decide (character, LoRA, photo provenance): only the minors floor here.
+       CREATOROS_SANS_FILTRE=1 (private install): empty list, the front end does not filter. */
+    t0Blocklist: CONFIG.sansFiltre ? [] : (CONFIG.contenuAdulte ? T0_BLOCKLIST_MINEURS : T0_BLOCKLIST),
     // Layers the server prefixes to the prompt, so the console can show them
     // ("what will actually be sent" block). Predictive display; provenance
     // after render is authoritative.

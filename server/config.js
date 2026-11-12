@@ -148,6 +148,12 @@ export const CONFIG = {
   // seuls rendus fictifs de ce personnage, fichier inchange, voir fictif.js). Le plancher « mineurs »
   // reste actif. Sans contenuAdulte cette option ne fait rien.
   adultePersonnagesFictifs: process.env.CREATOROS_ADULTE_PERSONNAGES_FICTIFS === '1',
+  // LOCAL FORK PATCH: CREATOROS_SANS_FILTRE=1 desactive completement les filtres de contenu
+  // (T0 preHandler, T0 checks dans jobs.js, NudeNet scan). Pour installations privees
+  // mono-utilisateur (Tailscale/LAN) ou l'exploitant la reglementation des contenus lui-meme
+  // garantit. Sans cette variable, tout reste comme avant (contenuAdulte gouverne seulement
+  // le niveau de filtrage, pas sa presence).
+  sansFiltre: process.env.CREATOROS_SANS_FILTRE === '1',
 }
 
 CONFIG.mediaDir = path.join(CONFIG.dataDir, 'media')

@@ -79,7 +79,7 @@ let relancer = false
 
 /** One pass: scans assets created since the last pass. Safe to call at any time. */
 export async function filtrerNouveaux() {
-  if (!filtreDisponible() || CONFIG.contenuAdulte) return
+  if (!filtreDisponible() || CONFIG.contenuAdulte || CONFIG.sansFiltre) return
   if (enCours) { relancer = true; return }
   enCours = true
   try {
