@@ -10,7 +10,7 @@ import type {
   MediaMode, Register, Job, Asset,
   PhotoSelections, VideoSelections, SonSelections } from '../types'
 import { buildPhotoPrompt, buildVideoPrompt } from '../core/promptBuilder'
-import type { Garderobe, LoraInfo, LoraPick, PersonaCredit, PhotoEngine } from '../types'
+import type { Garderobe, LoraGroupeVideo, LoraInfo, LoraPick, LorasVideo, PersonaCredit, PhotoEngine } from '../types'
 import { GARDEROBE_VIDE } from '../types'
 import { composer } from '../core/composer'
 import type { FolderSort } from '../lib/folders'
@@ -120,6 +120,8 @@ interface AppState {
      The OFFERED list comes from the backend — never hard-coded here: it
      depends on what is actually present in ~/models/loras. */
   loraCatalog: LoraInfo[]
+  /** LOCAL FORK PATCH: base-model LoRAs per video engine (GET /api/loras/video) */
+  lorasVideo: Record<string, LorasVideo>
   loraPicks: LoraPick[]
 
   /* Jobs & assets */
@@ -271,6 +273,10 @@ interface AppState {
   toggleLora: (name: string) => void
   setLoraStrength: (name: string, strength: number) => void
   toggleVideoLora: (name: string) => void
+  loadLorasVideo: (moteur: string, frais?: boolean) => Promise<void>
+  /** a Wan pair in or out of the stack, both halves together */
+  toggleVideoLoraGroupe: (g: LoraGroupeVideo) => void
+  reglerVideoLoraGroupe: (g: LoraGroupeVideo, patch: { strength?: number; off?: boolean }) => void
   setVideoLoraStrength: (name: string, strength: number) => void
   setVideoLoraTrigger: (name: string, trigger: string) => void
   clearVideoLoras: () => void
@@ -566,6 +572,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => {
       })
     },
     loraCatalog: [],
+    lorasVideo: {},
     loraPicks: [],
     photo: defaultPhoto,
     video: defaultVideo,
@@ -1062,6 +1069,30 @@ export const useAppStore = create<AppState>()(persist((set, get) => {
         return { video: { ...s.video, videoLoras: cur.filter(l => l.name !== name) } }
       const info = s.loraCatalog.find(l => l.name === name)
       return { video: { ...s.video, videoLoras: [...cur, { name, strength: 1, trigger: info?.trigger ?? '' }] } }
+    }),
+    loadLorasVideo: async (moteur: string, frais = false) => {
+      try {
+        const r = await fetch(`/api/loras/video?moteur=${encodeURIComponent(moteur)}${frais ? '&frais=1' : ''}`)
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const d = await r.json() as LorasVideo
+        set(s => ({ lorasVideo: { ...s.lorasVideo, [moteur]: d } }))
+      } catch (e) {
+        set(s => ({ lorasVideo: { ...s.lorasVideo, [moteur]: { moteur, base: null, source: 'aucune', erreur: String((e as Error)?.message ?? e), groupes: [] } } }))
+      }
+    },
+    toggleVideoLoraGroupe: (g: LoraGroupeVideo) => set(s => {
+      const cur = s.video.videoLoras
+      const noms = g.membres.map(m => m.name)
+      if (noms.every(n => cur.some(l => l.name === n)))
+        return { video: { ...s.video, videoLoras: cur.filter(l => !noms.includes(l.name)) } }
+      // the trained words go on the first half only: one pair, one trigger in the prompt
+      const ajout = noms.filter(n => !cur.some(l => l.name === n))
+        .map(name => ({ name, strength: 1, trigger: name === noms[0] ? g.trigger : '' }))
+      return { video: { ...s.video, videoLoras: [...cur, ...ajout] } }
+    }),
+    reglerVideoLoraGroupe: (g: LoraGroupeVideo, patch: { strength?: number; off?: boolean }) => set(s => {
+      const noms = new Set(g.membres.map(m => m.name))
+      return { video: { ...s.video, videoLoras: s.video.videoLoras.map(l => (noms.has(l.name) ? { ...l, ...patch } : l)) } }
     }),
     setVideoLoraStrength: (name: string, strength: number) => set(s => ({
       video: { ...s.video, videoLoras: s.video.videoLoras.map(l => (l.name === name ? { ...l, strength } : l)) },

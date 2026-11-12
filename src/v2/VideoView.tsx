@@ -10,7 +10,7 @@ import { ImportLora } from '../components/ImportLora'
 import { useBriefHistory } from '../components/BriefHistory'
 import { Inspirations } from '../components/Inspirations'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Asset, VideoAspect } from '../types'
+import type { Asset, LoraGroupeVideo, LoraPick, VideoAspect } from '../types'
 import { STATUTS_ACTIFS } from '../types'
 import { useAppStore } from '../store/useAppStore'
 import { engineInfo, moteurT2v, VIDEO_ENGINES } from '../features/console/video/engines'
@@ -229,7 +229,7 @@ export function VideoView({ onOpen }: { onOpen: (a: Asset, list: Asset[]) => voi
             fmt={o => `${o} fps`} onPick={o => s.updateVideo({ fps: o })} />}
           {vMenu?.kind === 'aspect' && <PickMenu at={vMenu} onClose={() => setVMenu(null)} options={ASPECTS} current={v.aspect}
             fmt={o => o === 'origine' ? t('origine (still)') : o} onPick={o => s.updateVideo({ aspect: o })} />}
-          <LoraFold open={loraOpen} setOpen={setLoraOpen} />
+          <LoraFold open={loraOpen} setOpen={setLoraOpen} moteur={eng.key} />
           <div className="flex gap-1.5 flex-wrap items-center">
             {eng.draft && (
               <button className={`pill tool ${v.draft ? 'used' : ''}`} onClick={() => s.updateVideo({ draft: !v.draft })}>
@@ -289,6 +289,7 @@ export function VideoView({ onOpen }: { onOpen: (a: Asset, list: Asset[]) => voi
             fmt={o => `${o} fps`} onPick={o => s.updateVideo({ fps: o })} />}
           {vMenu?.kind === 'aspect' && <PickMenu at={vMenu} onClose={() => setVMenu(null)} options={ASPECTS.filter(a => a !== 'origine')} current={v.aspect}
             fmt={o => o} onPick={o => s.updateVideo({ aspect: o })} />}
+          {aBaseVideo(eng.key) && <LoraFold open={loraOpen} setOpen={setLoraOpen} moteur={eng.key} />}
           {eng.draft && (
             <div className="flex gap-1.5 flex-wrap items-center">
               <button className={`pill tool ${v.draft ? 'used' : ''}`} onClick={() => s.updateVideo({ draft: !v.draft })}>
@@ -543,7 +544,7 @@ export function VideoView({ onOpen }: { onOpen: (a: Asset, list: Asset[]) => voi
           useAppStore.setState({ initialBrief: s.userPrompt, promptVision: vision })
           s.setUserPrompt(pos)
         }} />
-      <VideoLoraPopup open={elm} onClose={() => setElm(false)} engine={v.engine} />
+      <VideoLoraPopup open={elm} onClose={() => setElm(false)} engine={eng.key} />
       {telephone && <TelephonePopup onClose={fermerTelephone} onRecu={recuTelephone} />}
       <FramePicker open={framePick !== null} onClose={() => setFramePick(null)} assets={s.assets}
         title={framePick === 'end' ? t('Frame de fin (keyframe)') : framePick === 'still' ? t('Still de départ (Rejouer)') : tab === 'etendre' ? t('Vidéo à prolonger') : t('Frame de départ')}
@@ -619,7 +620,11 @@ function VideoLoraPopup({ open, onClose, engine }: { open: boolean; onClose: () 
         <LoraStacks cle={loraFamily(engine)} picks={picks} apply={items => useAppStore.getState().updateVideo({ videoLoras: items })} />
         <ImportLora compatible={l => (ENGINE_LORAS[engine] ?? (() => false))({ arch: l.arch ?? '', name: l.name })}
           onAjout={nom => { if (!picks.some(x => x.name === nom)) toggle(nom) }} />
-        <div className="flex flex-col gap-1 mt-2" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+        {aBaseVideo(engine) ? (
+          <div className="flex flex-col gap-1 mt-2" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+            <LorasBase moteur={engine} q={q} />
+          </div>
+        ) : <div className="flex flex-col gap-1 mt-2" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
           {usable.map(l => {
             const pick = picks.find(x => x.name === l.name)
             return (
@@ -641,14 +646,85 @@ function VideoLoraPopup({ open, onClose, engine }: { open: boolean; onClose: () 
             )
           })}
           {usable.length === 0 && <div style={{ color: 'var(--faint)', fontSize: 12, padding: 10 }}>{t('aucune LoRA pour ce moteur')}</div>}
-        </div>
+        </div>}
         <div className="prow"><button className="b2" onClick={onClose}>{t('Fermer')}</button></div>
       </div>
     </div>
   )
 }
 
-function LoraFold({ open, setOpen }: { open: boolean; setOpen: (b: boolean) => void }) {
+/* LOCAL FORK PATCH: LoRAs of the engine's BASE MODEL (Wan 2.2 I2V / T2V A14B),
+   from GET /api/loras/video (Lora-Manager, else the base-model folder). A Wan 2.2
+   high/low pair is ONE entry: toggling, strength and mute act on both halves; the
+   server puts each half on its noise stage (stageless files on both). Stacked
+   LoRAs that do not belong to this base model are listed so they can be removed. */
+const MOTEURS_BASE = ['wan', 'wan_t2v']
+const aBaseVideo = (moteur: string) => MOTEURS_BASE.includes(moteur)
+const ETAGES: Record<LoraGroupeVideo['etages'], string> = { paire: 'H + L', high: 'H', low: 'L', deux: 'H + L' }
+
+function LorasBase({ moteur, q = '' }: { moteur: string; q?: string }) {
+  const liste = useAppStore(st => st.lorasVideo[moteur])
+  const charger = useAppStore(st => st.loadLorasVideo)
+  const picks = useAppStore(st => st.video.videoLoras)
+  const toggle = useAppStore(st => st.toggleVideoLoraGroupe)
+  const regler = useAppStore(st => st.reglerVideoLoraGroupe)
+  const setTrigger = useAppStore(st => st.setVideoLoraTrigger)
+  const toggleUne = useAppStore(st => st.toggleVideoLora)
+  useEffect(() => { if (!liste) void charger(moteur) }, [liste, moteur, charger])
+  if (!liste) return <div style={{ color: 'var(--faint)', fontSize: 12, padding: 6 }}>{t('chargement…')}</div>
+  const f = q.trim().toLowerCase()
+  const groupes = liste.groupes.filter(g => !f || `${g.titre} ${g.detail} ${g.trigger} ${g.membres.map(m => m.name).join(' ')}`.toLowerCase().includes(f))
+  const connues = new Set(liste.groupes.flatMap(g => g.membres.map(m => m.name)))
+  const autres = picks.filter(p => !connues.has(p.name))
+  return (<>
+    <div className="flex items-center gap-2" style={{ color: 'var(--faint)', fontSize: 11 }}>
+      <span className="truncate">{liste.base ?? moteur} · {liste.source === 'loramanager' ? 'Lora-Manager' : t('dossier')} · {tp(groupes.length, '{n} LoRA', '{n} LoRA')}</span>
+      <button className="ml-auto" title={t('relire la liste')} onClick={() => void charger(moteur, true)}
+        style={{ border: 0, background: 'none', color: 'var(--faint)', cursor: 'pointer', fontSize: 12 }}>↻</button>
+    </div>
+    {liste.erreur && <div style={{ color: 'var(--faint)', fontSize: 11 }}>{liste.erreur}</div>}
+    {groupes.map(g => {
+      const choisis = g.membres.map(m => picks.find(p => p.name === m.name)).filter((p): p is LoraPick => !!p)
+      const actif = choisis.length === g.membres.length
+      const tete = choisis[0]
+      const seule = g.etages === 'high' || g.etages === 'low'
+      return (
+        <div key={g.id} className="engine" style={actif ? { boxShadow: 'inset 0 0 0 1px rgba(242,77,138,.35)' } : undefined}>
+          <span className="nm" style={{ cursor: 'pointer' }} onClick={() => toggle(g)} title={g.membres.map(m => `${m.etage ?? 'high + low'} : ${m.name}`).join('\n')}>
+            <span className="text-[12px] truncate">{g.titre}{g.detail && <span style={{ color: 'var(--faint)' }}> · {g.detail}</span>}</span>
+            <span className="ml-auto text-[11px]" style={{ color: seule ? 'var(--accent)' : 'var(--faint)', whiteSpace: 'nowrap' }}
+              title={seule ? t('une seule moitié de la paire : elle ne touche que cette étape') : g.etages === 'deux' ? t('sans étape : appliquée aux deux modèles') : t('paire high + low')}>{ETAGES[g.etages]}</span>
+            <span className="text-[12px]" style={{ color: actif ? 'var(--accent)' : 'var(--faint)' }}>{actif ? '✓' : choisis.length ? '½' : '+'}</span>
+          </span>
+          {actif && tete && (<>
+            <span className="flex items-center gap-2 mt-1.5 text-[12px]" style={{ color: 'var(--muted)', opacity: tete.off ? .5 : 1 }}>
+              <LoraSwitch off={tete.off} onToggle={() => regler(g, { off: !tete.off })} />
+              <input type="range" min={0} max={2} step={0.1} value={tete.strength}
+                style={{ flex: 1, accentColor: 'var(--accent)' }}
+                onChange={e => regler(g, { strength: Number(e.target.value) })} />
+              <b style={{ color: 'var(--text)' }}>{tete.strength.toFixed(1)}</b>
+            </span>
+            <input className="pin" style={{ marginTop: 6, fontSize: 12 }} placeholder={t('mot déclencheur (optionnel)')}
+              value={tete.trigger ?? ''} onChange={e => setTrigger(tete.name, e.target.value)} />
+          </>)}
+        </div>
+      )
+    })}
+    {groupes.length === 0 && <div style={{ color: 'var(--faint)', fontSize: 12, padding: 10 }}>{t('aucune LoRA pour ce moteur')}</div>}
+    {autres.length > 0 && (
+      <div className="flex gap-1.5 flex-wrap items-center" style={{ marginTop: 6, fontSize: 12, color: 'var(--faint)' }}>
+        <span>{t('Empilées, mais pas pour ce modèle :')}</span>
+        {autres.map(p => (
+          <button key={p.name} className="pill" style={{ fontSize: 12, padding: '3px 9px' }} title={p.name} onClick={() => toggleUne(p.name)}>
+            {p.name.split('/').pop()?.replace(/\.safetensors$/, '')} ✕
+          </button>
+        ))}
+      </div>
+    )}
+  </>)
+}
+
+function LoraFold({ open, setOpen, moteur }: { open: boolean; setOpen: (b: boolean) => void; moteur: string }) {
   const catalog = useAppStore(st => st.loraCatalog)
   const loadLoras = useAppStore(st => st.loadLoras)
   const picks = useAppStore(st => st.video.videoLoras)
@@ -666,7 +742,8 @@ function LoraFold({ open, setOpen }: { open: boolean; setOpen: (b: boolean) => v
           </span>
         </span>
       </button>
-      {open && usable.map(l => {
+      {open && aBaseVideo(moteur) && <LorasBase moteur={moteur} />}
+      {open && !aBaseVideo(moteur) && usable.map(l => {
         const pick = picks.find(x => x.name === l.name)
         return (
           <div key={l.name} className="engine" style={pick ? { boxShadow: 'inset 0 0 0 1px rgba(242,77,138,.35)' } : undefined}>

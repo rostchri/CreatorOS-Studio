@@ -20,6 +20,7 @@ import { demarrerFiltre, filtrerNouveaux } from './filtreImages.js'
 import { depotVisiteur, TYPES_DEPOT } from './depots.js'
 import { analyserClip, describeOutfit, describeScene, decomposeScene, momentSuivant } from './vision.js'
 import * as comfy from './comfy.js'
+import { lorasVideo } from './lorasVideo.js'
 import * as prompts from './prompts.js'
 import * as composer from './composer.js'
 import * as carrousel from './carrousel.js'
@@ -412,6 +413,9 @@ async function mesurerTelemetrie() {
 }
 
 app.get('/api/loras', async () => comfy.listLoras())
+/* LOCAL FORK PATCH: the LoRAs of a video engine's base model (Wan 2.2 I2V / T2V),
+   high/low pairs grouped, from Lora-Manager or the base-model folder. ?frais=1 skips the 60 s cache. */
+app.get('/api/loras/video', async req => lorasVideo(String(req.query?.moteur ?? ''), { frais: req.query?.frais === '1' }))
 
 /** Prompt rewriting by local LLM, on CPU. Synchronous on purpose: the front
  *  end waits for the text to show it in "Prompt composé", where the operator

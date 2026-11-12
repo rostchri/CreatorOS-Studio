@@ -63,6 +63,11 @@ export const CONFIG = {
      unset or invalid = top level only, as before. */
   lorasPropres: (s => /^[\w-][\w.-]*$/.test(s) ? s : '')(process.env.CREATOROS_LORAS_PROPRES ?? ''),
 
+  /* LOCAL FORK PATCH: ComfyUI-Lora-Manager (standalone) that indexes lorasDir
+     with CivitAI metadata (base model, trained words). Lists the LoRAs of a
+     video engine's base model (server/lorasVideo.js). Unset = folder fallback. */
+  loraManagerUrl: (process.env.CREATOROS_LORAMANAGER_URL ?? '').replace(/\/+$/, ''),
+
   /* Z-Image ControlNet patch (Fun-CN Union), loaded by ModelPatchLoader.
      Lives in models/model_patches/, not models/controlnet/: it is a model
      patch, not a ControlNet in the standard node sense. */

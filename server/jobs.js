@@ -4152,7 +4152,8 @@ async function runJob(job, isRetry = false, connRetried = false) {
       const info = comfy.loraInfo(l.name)
       const word = (l.trigger ?? info?.trigger ?? '').trim()
       if (word) {
-        triggers.push(word)
+        // the two halves of a Wan high/low pair share their word: write it once
+        if (!triggers.includes(word)) triggers.push(word)
         l.trigger = word
         l.triggerSource = l.trigger && !info?.trigger ? 'job' : info?.triggerSource ?? 'job'
       }

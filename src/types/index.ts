@@ -348,6 +348,26 @@ export interface LoraPick {
   off?: boolean
 }
 
+/** LOCAL FORK PATCH: one entry of GET /api/loras/video — a Wan 2.2 high/low pair
+ *  (or a lone file) of the engine's base model. */
+export interface LoraGroupeVideo {
+  id: string
+  titre: string
+  detail: string
+  /** paire = high + low; high/low = one half only; deux = no stage, goes on both chains */
+  etages: 'paire' | 'high' | 'low' | 'deux'
+  /** CivitAI trained words, '' if none */
+  trigger: string
+  membres: { name: string; etage: 'high' | 'low' | null }[]
+}
+export interface LorasVideo {
+  moteur: string
+  base: string | null
+  source: 'loramanager' | 'dossier' | 'aucune'
+  erreur?: string
+  groupes: LoraGroupeVideo[]
+}
+
 /** Render progress, relayed from ComfyUI's WebSocket. */
 export interface JobProgress { value: number; max: number; etaS: number | null }
 
