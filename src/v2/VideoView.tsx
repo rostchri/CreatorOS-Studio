@@ -653,12 +653,13 @@ function VideoLoraPopup({ open, onClose, engine }: { open: boolean; onClose: () 
   )
 }
 
-/* LOCAL FORK PATCH: LoRAs of the engine's BASE MODEL (Wan 2.2 I2V / T2V A14B),
-   from GET /api/loras/video (Lora-Manager, else the base-model folder). A Wan 2.2
-   high/low pair is ONE entry: toggling, strength and mute act on both halves; the
-   server puts each half on its noise stage (stageless files on both). Stacked
-   LoRAs that do not belong to this base model are listed so they can be removed. */
-const MOTEURS_BASE = ['wan', 'wan_t2v']
+/* LOCAL FORK PATCH: LoRAs of the engine's BASE MODEL (Wan 2.2 I2V / T2V A14B,
+   MiniMax H3), from GET /api/loras/video (Lora-Manager, else the base-model
+   folder). A Wan 2.2 high/low pair is ONE entry: toggling, strength and mute act
+   on both halves; the server puts each half on its noise stage (stageless files
+   on both). Stacked LoRAs that do not belong to this base model are listed so
+   they can be removed. */
+const MOTEURS_BASE = ['wan', 'wan_t2v', 'minimax']
 const aBaseVideo = (moteur: string) => MOTEURS_BASE.includes(moteur)
 const ETAGES: Record<LoraGroupeVideo['etages'], string> = { paire: 'H + L', high: 'H', low: 'L', deux: 'H + L' }
 

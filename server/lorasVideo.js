@@ -21,6 +21,7 @@ import { cleSansEtage, etageLora } from './etageLora.js'
 export const BASES_VIDEO = {
   wan: 'Wan Video 2.2 I2V-A14B',
   wan_t2v: 'Wan Video 2.2 T2V-A14B',
+  minimax: 'MiniMax H3',
 }
 
 // Built into the recipes (lightx2v 4 steps): a second copy would apply it twice.
