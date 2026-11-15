@@ -6,6 +6,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
 import { CONFIG } from './config.js'
+import { estApple } from './carteGraphique.js'
 
 /* One ai-toolkit per engine: FLUX 3 needs a recent version (flux3 arch), installed separately so
    the one training Klein and Krea is untouched. */
@@ -17,6 +18,11 @@ export const aiToolkitPret = (moteur) => fs.existsSync(path.join(dossierAiToolki
    krea2/raw.safetensors, flux3-klein-base/ (config, DiT, ae), qwen3-vl-4b-instruct/ and qwen-image/vae/.
    Without the variable, the hub ids (upstream behaviour). */
 const MODELES_LOCAUX = process.env.CREATOROS_ENTRAINEMENT_MODELES || null
+/* Apple Silicon (Metal/MPS): ai-toolkit runs on the mps device. bitsandbytes has no MPS kernel for
+   its 8-bit optimizers (optimizer_update_8bit_blockwise), so plain AdamW: for a rank-32 LoRA the
+   optimizer state is small either way. Ops missing on MPS fall back to the CPU. */
+const SUR_MAC = estApple()
+const FACTEUR_DUREE = Number(process.env.CREATOROS_ENTRAINEMENT_FACTEUR) || (SUR_MAC ? 6 : 1)
 const local = (...p) => path.join(MODELES_LOCAUX, ...p)
 const present = f => fs.existsSync(f) ? f : null
 /* Raw Krea 2 weights (training does not use the turbo version): CREATOROS_KREA2_RAW,
@@ -54,7 +60,7 @@ export const MOTEURS_ENTRAINEMENT = {
   } },
 }
 export const moteurEntrainementPret = m => !!MOTEURS_ENTRAINEMENT[m] && aiToolkitPret(m) && !!MOTEURS_ENTRAINEMENT[m].modele()
-export const dureeEstimeeMs = (moteur, pas) => { const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein; return Math.round((pas * m.secParPas + m.preparationS) * 1000) }
+export const dureeEstimeeMs = (moteur, pas) => { const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein; return Math.round((pas * m.secParPas + m.preparationS) * FACTEUR_DUREE * 1000) }
 
 const pythonAiToolkit = (moteur) => [path.join(dossierAiToolkit(moteur), 'venv', 'bin', 'python'), path.join(dossierAiToolkit(moteur), '.venv', 'bin', 'python')].find(f => fs.existsSync(f)) ?? 'python3'
 
@@ -78,7 +84,7 @@ config:
   process:
     - type: 'sd_trainer'
       training_folder: "${path.join(racine, 'sortie')}"
-      device: cuda:0
+      device: ${SUR_MAC ? 'mps' : 'cuda:0'}
       trigger_word: "${declencheur}"
       network: { type: "lora", linear: 32, linear_alpha: 32 }
       save: { dtype: float16, save_every: ${pas}, max_step_saves_to_keep: 1, push_to_hub: false }
@@ -97,7 +103,7 @@ config:
         gradient_checkpointing: true
         noise_scheduler: "flowmatch"
         timestep_type: weighted
-        optimizer: "adamw8bit"
+        optimizer: "${SUR_MAC ? 'adamw' : 'adamw8bit'}"
         lr: 1e-4
         dtype: bf16
       model:
@@ -123,10 +129,15 @@ export function arreterEntrainement(id) {
 }
 export function entrainer({ id, config, sortie, pas, moteur }, progres) {
   return new Promise((ok, ko) => {
-    const p = spawn(pythonAiToolkit(moteur), ['run.py', config], { cwd: dossierAiToolkit(moteur), env: { ...process.env, PYTHONUNBUFFERED: '1' }, detached: true })
+    const env = { ...process.env, PYTHONUNBUFFERED: '1', ...(SUR_MAC ? { PYTORCH_ENABLE_MPS_FALLBACK: '1' } : {}) }
+    const p = spawn(pythonAiToolkit(moteur), ['run.py', config], { cwd: dossierAiToolkit(moteur), env, detached: true })
     if (id) processus.set(id, p)
+    // full ai-toolkit output next to the config: a failed run otherwise only reports its exit code
+    const journal = fs.createWriteStream(path.join(path.dirname(config), 'ai-toolkit.log'), { flags: 'a' })
+    p.on('close', () => journal.end())
     let reste = ''
     const lire = b => {
+      journal.write(b)
       const t = reste + b.toString(); const l = t.split(/[\r\n]/); reste = l.pop() ?? ''
       for (const x of l) { const m = /(\d+)\/(\d+) \[/.exec(x); if (m && Number(m[2]) === pas) progres(Number(m[1]), pas) }
     }
