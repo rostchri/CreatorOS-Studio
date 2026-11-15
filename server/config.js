@@ -46,13 +46,24 @@ export const CONFIG = {
      recipe. A LoadImage node can only read from there, hence a real file
      upload rather than an object URL. */
   comfyInput: process.env.COMFY_INPUT || path.join(comfyDir, 'input'),
-  /* ComfyUI venv Python: used by helper scripts (caption burning) and
-     the diagnostic. */
+  /* ComfyUI venv Python: used by helper scripts (caption burning) and the
+     diagnostic. */
   comfyPython: process.env.COMFY_PYTHON || path.join(comfyDir, 'venv/bin/python'),
 
   /* LoRA folder: used to build the list offered to the front end and to
      classify each file by architecture (header read). */
   lorasDir: process.env.CREATOROS_LORAS || path.join(comfyDir, 'models/loras'),
+
+  /* Subfolder of lorasDir for the LoRAs this instance produces (training,
+     upload). Listed next to the top level as `<sub>/<file>`, the name ComfyUI
+     resolves natively. Other subfolders stay hidden. A bare folder name only;
+     unset or invalid = top level only, as before. */
+  lorasPropres: (s => /^[\w-][\w.-]*$/.test(s) ? s : '')(process.env.CREATOROS_LORAS_PROPRES ?? ''),
+
+  /* LOCAL FORK PATCH: ComfyUI-Lora-Manager (standalone) that indexes lorasDir
+     with CivitAI metadata (base model, trained words). Lists the LoRAs of a
+     video engine's base model (server/lorasVideo.js). Unset = folder fallback. */
+  loraManagerUrl: (process.env.CREATOROS_LORAMANAGER_URL ?? '').replace(/\/+$/, ''),
 
   /* Z-Image ControlNet patch (Fun-CN Union), loaded by ModelPatchLoader.
      Lives in models/model_patches/, not models/controlnet/: it is a model
@@ -124,8 +135,27 @@ export const CONFIG = {
      content. Never with an owner key (shared studio), never below the "minors" floor, never
      when a render starts from an imported photo (see jobs.js). */
   // never on the public demo: requires a local install, no owner key, listening on this machine only
+  // LOCAL FORK PATCH: CREATOROS_RESEAU_PRIVE=1 remplace le critère « écoute locale » par une
+  // hypothese reseau que l'exploitant garantit lui-meme (ici : bind sur une adresse Tailscale
+  // privee, installation mono-utilisateur, aucune cle proprietaire).
+  // Sans cette variable, le comportement amont est intact (loopback seul).
   contenuAdulte: process.env.CREATOROS_CONTENU_ADULTE === '1' && !(process.env.CREATOROS_OWNER_KEY || '').trim()
-    && ['127.0.0.1', 'localhost', '::1'].includes(process.env.CREATOROS_HOST || '127.0.0.1'),
+    && (['127.0.0.1', 'localhost', '::1'].includes(process.env.CREATOROS_HOST || '127.0.0.1')
+        || process.env.CREATOROS_RESEAU_PRIVE === '1'),
+  // LOCAL FORK PATCH: CREATOROS_ADULTE_PERSONNAGES_FICTIFS=1 etend le mode adulte aux personnages
+  // fictifs, c'est-a-dire crees par le createur de personnages a partir d'un portrait rendu sur
+  // texte seul (aucune photo, aucune reference, aucune LoRA). Le drapeau `fictif` est pose par le
+  // createur uniquement, retire a chaque changement de photo de profil, jamais accepte via l'API ;
+  // une LoRA sur le personnage le neutralise, sauf si elle est attestee fictive (entrainee sur les
+  // seuls rendus fictifs de ce personnage, fichier inchange, voir fictif.js). Le plancher « mineurs »
+  // reste actif. Sans contenuAdulte cette option ne fait rien.
+  adultePersonnagesFictifs: process.env.CREATOROS_ADULTE_PERSONNAGES_FICTIFS === '1',
+  // LOCAL FORK PATCH: CREATOROS_SANS_FILTRE=1 desactive completement les filtres de contenu
+  // (T0 preHandler, T0 checks dans jobs.js, NudeNet scan). Pour installations privees
+  // mono-utilisateur (Tailscale/LAN) ou l'exploitant la reglementation des contenus lui-meme
+  // garantit. Sans cette variable, tout reste comme avant (contenuAdulte gouverne seulement
+  // le niveau de filtrage, pas sa presence).
+  sansFiltre: process.env.CREATOROS_SANS_FILTRE === '1',
 }
 
 CONFIG.mediaDir = path.join(CONFIG.dataDir, 'media')

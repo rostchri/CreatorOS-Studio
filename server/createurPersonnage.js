@@ -8,8 +8,10 @@ import { execFileSync } from 'node:child_process'
 import { CONFIG } from './config.js'
 import * as store from './db.js'
 import { enqueue, enqueueEntrainement } from './jobs.js'
-import { activer, creer as creerPersona, enregistrer as enregistrerPersona, persona as personaActif, SANS_PERSONNAGE } from './persona.js'
+import { activer, creer as creerPersona, enregistrer as enregistrerPersona, marquerFictif, persona as personaActif, SANS_PERSONNAGE } from './persona.js'
 import { t0Hit } from './t0.js'
+// LOCAL FORK PATCH: the generator's portrait prompt and its text-only check (see fictif.js)
+import { PORTRAIT_GENERATEUR, portraitSurTexteSeul } from './fictif.js'
 
 const nettoie = (v, n = 80) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, n)
 
@@ -25,7 +27,7 @@ const description = x => [`a ${x.age}-year-old adult ${x.genre}`, x.origine, x.c
 
 export function propositions(traits) {
   const x = lireTraits(traits)
-  const texte = `Photorealistic head-and-shoulders studio portrait of ${description(x)}, wearing ${x.style || 'simple casual clothes'}, neutral light grey background, soft even light, sharp focus on the face, natural skin texture, looking at the camera`
+  const texte = `${PORTRAIT_GENERATEUR}${description(x)}, wearing ${x.style || 'simple casual clothes'}, neutral light grey background, soft even light, sharp focus on the face, natural skin texture, looking at the camera`
   return Array.from({ length: 4 }, () => enqueue({ mode: 'photo', register: 'sfw', personaId: SANS_PERSONNAGE, purpose: 'creative', photoEngine: 'krea',
     composedPositive: texte, userPrompt: texte, composedNegative: '', width: 1024, height: 1024 }).id)
 }
@@ -62,7 +64,11 @@ export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
   enregistrerPersona({ preamble: description(x), description: `${n} : ${description(x)}, ${x.style}`, credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage fictif créé dans le studio, libre' } }, p.id)
   const dossier = path.join(CONFIG.mediaDir, '.persona', p.id.replace(/[^a-z0-9_]/g, ''))
   fs.mkdirSync(dossier, { recursive: true })
+  // LOCAL FORK PATCH: a deleted character's photo with the same id would win over avatar.jpg (png first)
+  for (const e of ['.png', '.webp']) fs.rmSync(path.join(dossier, `avatar${e}`), { force: true })
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=512:512', '-q:v', '3', path.join(dossier, 'avatar.jpg')])
+  // LOCAL FORK PATCH: the character is fictitious only if its portrait comes from a text-only render
+  if (portraitSurTexteSeul(a)) marquerFictif(p.id, true)
   const planche = enqueue({ mode: 'photo', register: 'sfw', personaId: p.id, purpose: 'creative', photoEngine: 'klein', composedNegative: '', width: 1344, height: 768,
     composedPositive: `Character reference sheet of the same person: front view, three-quarter view, profile and back view, full body, same outfit (${x.style || 'casual clothes'}), plain light grey background, even studio light`,
     userPrompt: 'planche de référence' }).id

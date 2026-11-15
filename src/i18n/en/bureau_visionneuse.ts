@@ -219,4 +219,13 @@ export const bureau_visionneuse: Record<string, string> = {
   'Voix correcte en anglais, brouillonne en français · ambiance quasi muette': 'Voice is fine in English, sloppy in French · ambient sound nearly silent',
   'Image de départ du carrousel': 'Carousel start image',
   'Une image de départ, et une série de photos de la même séance : même tenue, même lieu, poses et cadrages variés': 'One start image, then a series of photos from the same shoot: same outfit, same place, varied poses and framings',
+  // LOCAL FORK PATCH: base-model LoRAs of the video engines (VideoView LorasBase)
+  'dossier': 'folder',
+  'relire la liste': 'reload the list',
+  '{n} LoRA': '{n} LoRA',
+  'une seule moitié de la paire : elle ne touche que cette étape': 'only one half of the pair: it affects that stage only',
+  'sans étape : appliquée aux deux modèles': 'no stage: applied to both models',
+  'paire high + low': 'high + low pair',
+  'mot déclencheur (optionnel)': 'trigger word (optional)',
+  'Empilées, mais pas pour ce modèle :': 'Stacked, but not for this model:',
 }

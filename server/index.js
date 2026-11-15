@@ -20,13 +20,14 @@ import { demarrerFiltre, filtrerNouveaux } from './filtreImages.js'
 import { depotVisiteur, TYPES_DEPOT } from './depots.js'
 import { analyserClip, describeOutfit, describeScene, decomposeScene, momentSuivant } from './vision.js'
 import * as comfy from './comfy.js'
+import { lorasVideo } from './lorasVideo.js'
 import * as prompts from './prompts.js'
 import * as composer from './composer.js'
 import * as carrousel from './carrousel.js'
 import * as captions from './captions.js'
 import { ensurePoster } from './poster.js'
-import { T0_BLOCKLIST, t0Hit, t0Mineur } from './t0.js'
-import { SANS_PERSONNAGE, persona, personas, identityPreambleFor, enregistrer as enregistrerPersona, champsFiges, creer as creerPersona, activer as activerPersona, supprimer as supprimerPersona } from './persona.js'
+import { T0_BLOCKLIST, T0_BLOCKLIST_MINEURS, t0Hit, t0Mineur } from './t0.js'
+import { SANS_PERSONNAGE, persona, personas, identityPreambleFor, enregistrer as enregistrerPersona, champsFiges, creer as creerPersona, activer as activerPersona, supprimer as supprimerPersona, marquerFictif } from './persona.js'
 import { lireCreateur, ecrireCreateur } from './createur.js'
 import { etatCloud, importerCloud, tacheCloud } from './cloud-loras.js'
 import { enqueuePlanLong, H3_MESSAGE_DEMO, OPS_RELANCABLES, relancerSpecial, avancementEntrainements, enqueueEntrainement, enqueueDoublage, enqueueRecadrage, enqueueObjet3d, enqueueMusique, cheminModele, enqueueParole, enqueueReshoot, enqueueCleanPlate, enqueueEffetLtx, enqueueTransition, EFFETS_TRANSITION, enqueueDanse3d, STUDIOS_DANSE, enqueueDetour, enqueueTransparent, enqueueProfondeur, enqueueSeedvr, enqueueStage, sceneReshoot, deposerAvecCle, enqueue, enqueueParPlans, enqueueInpaint, enqueueInpaintVideo, enqueueUpscale, enqueueFinition, enqueueEssayage, enqueuePhotodump, enqueueStyleRef, enqueuePhotoHd, cancelJob, promoteJob, reorderQueue, RENDER_RATES, driverMeta, recoverQueue, queueDepth, placeDansFile, RECIPES, VIDEO_ENGINES, recettesServies, DEFAULT_VIDEO_ENGINE, MOTION_RECIPES, DEPRECATED_RECIPES } from './jobs.js'
@@ -145,6 +146,9 @@ function mineurDans(v, cle = '') {
   return null
 }
 app.addHook('preHandler', async (req, reply) => {
+  // LOCAL FORK PATCH: CREATOROS_SANS_FILTRE=1 (installation privee mono-utilisateur)
+  // desactive le filtre de contenu preHandler dans son entierete.
+  if (CONFIG.sansFiltre) return
   if (req.method !== 'POST' && req.method !== 'PUT') return
   const route = `${req.method} ${req.routeOptions?.url}`
   if (!req.url.startsWith('/api/') || sansFiltreContenu.has(route) || Buffer.isBuffer(req.body)) return
@@ -332,7 +336,10 @@ app.get('/api/health', async req => {
     // Studio locked by an owner key (the front end hides editing).
     verrou: !!CONFIG.cleProprietaire,
     // The front end reads these lists on mount instead of keeping a copy.
-    t0Blocklist: T0_BLOCKLIST,
+    /* LOCAL FORK PATCH: in adult mode the full list would block every adult prompt in the browser
+       before the server can decide (character, LoRA, photo provenance): only the minors floor here.
+       CREATOROS_SANS_FILTRE=1 (private install): empty list, the front end does not filter. */
+    t0Blocklist: CONFIG.sansFiltre ? [] : (CONFIG.contenuAdulte ? T0_BLOCKLIST_MINEURS : T0_BLOCKLIST),
     // Layers the server prefixes to the prompt, so the console can show them
     // ("what will actually be sent" block). Predictive display; provenance
     // after render is authoritative.
@@ -408,6 +415,9 @@ async function mesurerTelemetrie() {
 }
 
 app.get('/api/loras', async () => comfy.listLoras())
+/* LOCAL FORK PATCH: the LoRAs of a video engine's base model (Wan 2.2 I2V / T2V),
+   high/low pairs grouped, from Lora-Manager or the base-model folder. ?frais=1 skips the 60 s cache. */
+app.get('/api/loras/video', async req => lorasVideo(String(req.query?.moteur ?? ''), { frais: req.query?.frais === '1' }))
 
 /** Prompt rewriting by local LLM, on CPU. Synchronous on purpose: the front
  *  end waits for the text to show it in "Prompt composé", where the operator
@@ -850,9 +860,9 @@ app.post('/api/persona/lora', async (req, reply) => {
   const brut = String(req.query.nom || '').replace(/\.safetensors$/i, '')
   const stem = brut.normalize('NFD').replace(/[^\w.-]+/g, '_').replace(/^\.+/, '').slice(0, 80)
   if (!stem) { reply.code(400); return { error: 'nom de fichier manquant' } }
-  const nom = `${stem}.safetensors`, cible = path.join(CONFIG.lorasDir, nom)
+  const { name: nom, full: cible } = comfy.loraDestination(`${stem}.safetensors`)
   if (fs.existsSync(cible) && req.query.remplacer !== '1') { reply.code(409); return { error: `« ${nom} » existe déjà`, nom } }
-  fs.mkdirSync(CONFIG.lorasDir, { recursive: true })
+  fs.mkdirSync(path.dirname(cible), { recursive: true })
   const tmp = `${cible}.part`
   let octets = 0
   try {
@@ -882,12 +892,16 @@ const AVATAR_EXTS = ['.png', '.jpg', '.webp']
 const idAvatar = id => String(id ?? personas().active ?? 'default').replace(/[^a-z0-9_]/g, '') || 'default'
 const avatarDir = id => path.join(AVATAR_DIR, idAvatar(id))
 const avatarFile = id => AVATAR_EXTS.map(e => path.join(avatarDir(id), `avatar${e}`)).find(f => fs.existsSync(f)) || null
+/* LOCAL FORK PATCH: a new profile photo may show anyone: the character loses its "fictitious"
+   flag (only the character creator sets it, from a text-only portrait). */
+const plusFictif = id => { for (const p of personas().list) if (idAvatar(p.id) === idAvatar(id)) marquerFictif(p.id, false) }
 /* Legacy layout (a single photo at the root): attached to the active character. */
 {
   const ancien = AVATAR_EXTS.map(e => path.join(AVATAR_DIR, `avatar${e}`)).find(f => fs.existsSync(f))
   if (ancien && personas().active && !avatarFile()) {
     fs.mkdirSync(avatarDir(), { recursive: true })
     fs.renameSync(ancien, path.join(avatarDir(), path.basename(ancien)))
+    plusFictif()
   }
 }
 function avatarMeta(id) {
@@ -913,6 +927,7 @@ app.put('/api/persona/avatar', async (req, reply) => {
   fs.mkdirSync(dir, { recursive: true })
   for (const e of AVATAR_EXTS) fs.rmSync(path.join(dir, `avatar${e}`), { force: true })
   fs.writeFileSync(path.join(dir, `avatar${ext === '.jpeg' ? '.jpg' : ext}`), buf)
+  plusFictif(id)
   app.log.info(`photo de profil ${idAvatar(id)} → ${(buf.length / 1e6).toFixed(1)} Mo`)
   return avatarMeta(id)
 })
@@ -938,6 +953,7 @@ app.put('/api/persona/avatar/depuis-asset', async (req, reply) => {
   } catch (e) { fs.rmSync(tmp, { force: true }); reply.code(422); return { error: `recadrage impossible : ${e.message}` } }
   for (const e of AVATAR_EXTS) fs.rmSync(path.join(dir, `avatar${e}`), { force: true })
   fs.renameSync(tmp, path.join(dir, 'avatar.jpg'))
+  plusFictif(id)
   return avatarMeta(id)
 })
 
@@ -2138,7 +2154,7 @@ app.get('/api/entrainement', async () => {
       : Math.max(0, (p.estimatedMs ?? 0) - ecoule)
     return { id: r.id, personaId: r.persona_id, statut: r.status, moteur: p.entrainementMoteur ?? 'klein', declencheur: p.entrainementDeclencheur ?? null, images: p.entrainementImages?.length ?? null,
       pas: av?.pas ?? (r.status === 'done' ? total : null), total, debut: r.started_at, fin: r.finished_at, resteMs, erreur: r.error ? String(r.error).slice(0, 200) : null,
-      lora: r.status === 'done' && !p.entrainementEssai ? `${String(r.persona_id).replace(/[^a-z0-9_]/g, '')}_${p.entrainementMoteur ?? 'klein'}_${r.id.slice(6)}.safetensors` : null }
+      lora: r.status === 'done' && !p.entrainementEssai ? comfy.loraDestination(`${String(r.persona_id).replace(/[^a-z0-9_]/g, '')}_${p.entrainementMoteur ?? 'klein'}_${r.id.slice(6)}.safetensors`).name : null }
   })
   const moteurs = Object.entries(MOTEURS_ENTRAINEMENT).map(([id, m]) => ({ id, nom: m.nom, pret: moteurEntrainementPret(id), secParPas: m.secParPas, preparationS: m.preparationS }))
   return { pret: aiToolkitPret(), moteurs, travaux }

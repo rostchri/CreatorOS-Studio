@@ -13,10 +13,17 @@ export const dossierAiToolkit = (moteur) => moteur === 'flux3'
   ? (process.env.CREATOROS_AI_TOOLKIT_FLUX3 || path.join(os.homedir(), 'ai-toolkit-flux3'))
   : (process.env.CREATOROS_AI_TOOLKIT || path.join(os.homedir(), 'ai-toolkit'))
 export const aiToolkitPret = (moteur) => fs.existsSync(path.join(dossierAiToolkit(moteur), 'run.py'))
+/* Local model folders, no hub access (CREATOROS_ENTRAINEMENT_MODELES): klein-9b/ (DiT + ae),
+   krea2/raw.safetensors, flux3-klein-base/ (config, DiT, ae), qwen3-vl-4b-instruct/ and qwen-image/vae/.
+   Without the variable, the hub ids (upstream behaviour). */
+const MODELES_LOCAUX = process.env.CREATOROS_ENTRAINEMENT_MODELES || null
+const local = (...p) => path.join(MODELES_LOCAUX, ...p)
+const present = f => fs.existsSync(f) ? f : null
 /* Raw Krea 2 weights (training does not use the turbo version): CREATOROS_KREA2_RAW,
    otherwise ComfyUI's model folders (extra_model_paths.yaml included). */
 function poidsKrea2() {
   if (process.env.CREATOROS_KREA2_RAW) return process.env.CREATOROS_KREA2_RAW
+  if (MODELES_LOCAUX) return present(local('krea2', 'raw.safetensors'))
   const bases = [path.join(CONFIG.comfyDir, 'models')]
   try {
     for (const m of fs.readFileSync(path.join(CONFIG.comfyDir, 'extra_model_paths.yaml'), 'utf8').matchAll(/^\s*base_path:\s*(\S+)/gm)) bases.push(m[1].replace(/^~/, os.homedir()))
@@ -26,11 +33,25 @@ function poidsKrea2() {
 
 /** Engines the studio can train a LoRA for, with the measured duration per step. */
 export const MOTEURS_ENTRAINEMENT = {
-  klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, modele: () => ({ arch: 'flux2_klein_9b', chemin: 'black-forest-labs/FLUX.2-klein-base-9B' }) },
-  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, modele: () => { const f = poidsKrea2(); return f ? { arch: 'krea2', chemin: f } : null } },
+  // local: the Qwen3-8B text encoder stays a hub id (fixed in ai-toolkit), served from the HF cache
+  klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, modele: () => {
+    const chemin = MODELES_LOCAUX ? present(local('klein-9b', 'flux-2-klein-base-9b.safetensors')) && local('klein-9b') : 'black-forest-labs/FLUX.2-klein-base-9B'
+    return chemin ? { arch: 'flux2_klein_9b', chemin } : null
+  } },
+  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, modele: () => {
+    const f = poidsKrea2()
+    if (!f) return null
+    if (!MODELES_LOCAUX) return { arch: 'krea2', chemin: f }
+    const te = present(local('qwen3-vl-4b-instruct')), vae = present(local('qwen-image', 'vae')) && local('qwen-image')
+    return te && vae ? { arch: 'krea2', chemin: f, kwargs: { text_encoder_path: te, vae_path: vae } } : null
+  } },
   /* FLUX 3 Image Klein: trained on Klein Base (FLUX Kommunity license accepted on Hugging Face), applied
      to the studio's distilled model. 5.6B parameters: fits in bf16 without quantization. */
-  flux3: { nom: 'FLUX 3 Klein', secParPas: 2, preparationS: 300, modele: () => ({ arch: 'flux3', chemin: 'black-forest-labs/flux-3-image-klein-base', sansQuantif: true }) },
+  flux3: { nom: 'FLUX 3 Klein', secParPas: 2, preparationS: 300, modele: () => {
+    if (!MODELES_LOCAUX) return { arch: 'flux3', chemin: 'black-forest-labs/flux-3-image-klein-base', sansQuantif: true }
+    const chemin = present(local('flux3-klein-base', 'model.safetensors')) && local('flux3-klein-base'), te = present(local('qwen3-vl-4b-instruct'))
+    return chemin && te ? { arch: 'flux3', chemin, sansQuantif: true, kwargs: { text_encoder_path: te } } : null
+  } },
 }
 export const moteurEntrainementPret = m => !!MOTEURS_ENTRAINEMENT[m] && aiToolkitPret(m) && !!MOTEURS_ENTRAINEMENT[m].modele()
 export const dureeEstimeeMs = (moteur, pas) => { const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein; return Math.round((pas * m.secParPas + m.preparationS) * 1000) }
@@ -85,7 +106,7 @@ config:
         quantize: ${modele.sansQuantif ? 'false' : 'true'}
         quantize_te: true
         ${modele.sansQuantif ? 'qtype_te: qfloat8' : 'qtype: qfloat8'}
-`
+${modele.kwargs ? `        model_kwargs:\n${Object.entries(modele.kwargs).map(([k, v]) => `          ${k}: "${v}"`).join('\n')}\n` : ''}`
   const f = path.join(racine, 'config.yaml')
   fs.writeFileSync(f, yaml)
   return { config: f, sortie: path.join(racine, 'sortie', id), moteur }

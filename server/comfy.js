@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { CONFIG } from './config.js'
 import { erreurExecution, erreurSoumission } from './erreurs.js'
+import { etageLora } from './etageLora.js'
 import { personaLoraNames } from './persona.js'
 import * as sdk from './transport-sdk.js'
 import { alleger } from './allege.js'
@@ -526,15 +527,17 @@ export function appliquerPilotage(file, wf, valeurs, applied = [], skipped = [])
 export function empilerLoras(out, loras, applied = [], skipped = []) {
   // Anchor = the recipe's last LoraLoaderModelOnly; if the recipe has none,
   // stack directly on the UNETLoader so LoRAs apply to a bare recipe too.
-  /* Wan high/low noise pair: a LoRA whose NAME states its stage
-     ("...high_noise...", "...low_noise...") goes on that stage's chain.
-     Others use the default anchoring below. */
-  const etage = n => /high[_-]?noise/i.test(n) ? 'high' : /low[_-]?noise/i.test(n) ? 'low' : null
+  /* Wan high/low noise pair (LOCAL FORK PATCH): a LoRA whose name states its
+     stage (etageLora: "high_noise", "HighNoise", "-HIGH-", a "HIGH/" folder...)
+     goes on that stage's chain; a LoRA with no stage goes on BOTH chains, as
+     Wan 2.1 / single-file LoRAs are meant to (it used to land on the low chain
+     only). Graphs without the pair use the default anchoring below. */
+  const etage = n => etageLora(n)
   // UNETLoader or UnetLoaderGGUF (the T2V recipe loads its low-noise stage as GGUF Q8)
   const unets = [...findByClass(out, 'UNETLoader'), ...findByClass(out, 'UnetLoaderGGUF')]
   const unetDe = e => unets.find(id => (e === 'high' ? /high[_-]?noise/i : /low[_-]?noise/i).test(String(out[id].inputs?.unet_name ?? '')))
   const nomDe = l => typeof l === 'string' ? l : l?.name
-  if (unetDe('high') && unetDe('low') && loras.some(l => etage(String(nomDe(l) ?? '')))) {
+  if (unetDe('high') && unetDe('low')) {
     const parEtage = { high: [], low: [] }, communes = []
     for (const l of loras) { const e = etage(String(nomDe(l) ?? '')); (e ? parEtage[e] : communes).push(l) }
     for (const e of ['high', 'low']) {
@@ -1613,20 +1616,41 @@ function loraTags(name) {
 /** Info for ONE LoRA by file name. The server resolves the trigger itself
  *  rather than trusting what the front end sends. */
 export function loraInfo(name) {
-  if (typeof name !== 'string' || !name || name.includes('/') || name.includes('\\')) return null
+  if (typeof name !== 'string' || !name || name.includes('\\')) return null
+  const parts = name.split('/')
+  if (parts.length > 2 || parts.some(p => !p || p === '.' || p === '..')) return null
+  /* one subfolder level at most, and only the instance's own one. LOCAL FORK
+     PATCH note: base-model LoRAs offered by /api/loras/video live deeper; their
+     trigger (CivitAI trainedWords) travels in the job, not from the file header,
+     whose unverified names would pollute the prompt. */
+  if (parts.length === 2 && (!CONFIG.lorasPropres || parts[0] !== CONFIG.lorasPropres)) return null
   const full = path.join(CONFIG.lorasDir, name)
   if (!full.startsWith(CONFIG.lorasDir + path.sep) || !fs.existsSync(full)) return null
   return { name, ...withTable(name, loraProbe(full)), ...loraTags(name) }
 }
 
+/** Where this instance writes a LoRA it produces: the name to reference
+ *  (`<lorasPropres>/<file>`, or the bare file) and its absolute path. */
+export function loraDestination(fichier) {
+  const name = CONFIG.lorasPropres ? `${CONFIG.lorasPropres}/${fichier}` : fichier
+  return { name, full: path.join(CONFIG.lorasDir, name) }
+}
+
 /** Lists the folder's LoRAs, classified. `arch` says what is actually loadable;
- *  the rest is returned too, flagged, so the UI can show it greyed out. */
+ *  the rest is returned too, flagged, so the UI can show it greyed out.
+ *  Top level only, plus the instance's own subfolder (lorasPropres). */
 export function listLoras() {
   let files = []
   try {
     files = fs.readdirSync(CONFIG.lorasDir).filter(f => f.endsWith('.safetensors'))
   } catch (e) {
     return { dir: CONFIG.lorasDir, error: String(e.message || e), loras: [] }
+  }
+  if (CONFIG.lorasPropres) {
+    try {
+      files.push(...fs.readdirSync(path.join(CONFIG.lorasDir, CONFIG.lorasPropres))
+        .filter(f => f.endsWith('.safetensors')).map(f => `${CONFIG.lorasPropres}/${f}`))
+    } catch { /* folder not created yet: the first training creates it */ }
   }
   const loras = files.sort().map(name => {
     const full = path.join(CONFIG.lorasDir, name)
