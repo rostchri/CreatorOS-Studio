@@ -573,6 +573,17 @@ export async function recoverQueue() {
  *  progress via /api/jobs/:id. */
 /** Source of a restoration, for before/after: studio paths only. */
 const origineValide = u => (typeof u === 'string' && /^\/(api\/uploads|media)\/[\w.%-]+$/.test(u) ? u : undefined)
+/* Job ids are millisecond timestamps. Variants the client submits in parallel can
+   arrive within the same millisecond and collided on jobs.id (UNIQUE constraint
+   failed). Monotonic per process and never an id already stored. */
+let dernierIdJob = 0
+function nouvelIdJob() {
+  let n = Math.max(Date.now(), dernierIdJob + 1)
+  while (store.getJob(String(n))) n++
+  dernierIdJob = n
+  return String(n)
+}
+
 export function enqueue(job) {
   if (job.mode === 'photo' && Array.isArray(job.references) && job.references.length) job = { ...job, photoEngine: 'klein', workflowFile: undefined }   // only the Klein recipe accepts references
   /* Submission idempotency: if the client's key ALREADY produced a job, return
@@ -586,7 +597,7 @@ export function enqueue(job) {
     const seen = store.jobsByRequestId(requestId)
     if (seen.length) return { id: seen[0].id, duplicate: true, queued: queue.length }
   }
-  const id = String(job.id ?? Date.now())
+  const id = String(job.id ?? nouvelIdJob())
   const seed = job.seed?.mode === 'lock' && Number.isFinite(job.seed?.value)
     ? Number(job.seed.value)
     : Math.floor(Math.random() * 0xffffffffffff)
@@ -910,7 +921,7 @@ export async function enqueueParPlans(job) {
     console.warn(`[plans] découpage impossible, rendu d'un bloc — ${String(e.message || e).slice(0, 200)}`)
   }
   if (!liste) return enqueue(job)
-  const group = crypto.randomUUID(), id0 = String(job.id ?? Date.now())
+  const group = crypto.randomUUID(), id0 = String(job.id ?? nouvelIdJob())
   const seed = job.seed?.mode === 'lock' && Number.isFinite(job.seed?.value)
     ? Number(job.seed.value) : Math.floor(Math.random() * 0xffffffffffff)
   const faits = liste.map((p, i) => enqueue({
