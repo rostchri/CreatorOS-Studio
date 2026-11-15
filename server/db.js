@@ -570,11 +570,19 @@ const origineRestaureeStmt = db.prepare("SELECT 1 FROM jobs WHERE json_extract(p
 /** The upload is the source of a restoration: its before/after is shown with the render. */
 export function estOrigineRestauree(nom) { return !!origineRestaureeStmt.get(`/api/uploads/${encodeURIComponent(String(nom))}`) }
 
-/** Edits and reels using this sound (music or voice-over), by name. */
-const sonDansMontagesStmt = db.prepare("SELECT nom FROM montages WHERE instr(data, ?) > 0")
-const sonDansReelsStmt = db.prepare("SELECT brief AS nom FROM reels WHERE instr(data, ?) > 0")
+/** Edits and reels using this sound (music or voice-over), by name.
+ *  CREATOROS-FIRSTSTART-PATCH: montages/reels werden erst in montage.js/reel.js angelegt,
+ *  die nach db.js importiert werden — ein Prepare auf Modulebene crasht beim Erststart auf
+ *  frischer DB ("no such table: montages"). Also lazy vorbereitet: beim ersten Aufruf existieren
+ *  die Tabellen garantiert. */
+let _usagesSonStmts = null
+const usagesSonStmts = () => (_usagesSonStmts ??= [
+  db.prepare("SELECT nom FROM montages WHERE instr(data, ?) > 0"),
+  db.prepare("SELECT brief AS nom FROM reels WHERE instr(data, ?) > 0"),
+])
 export function usagesSon(nom) {
-  return [...sonDansMontagesStmt.all(String(nom)), ...sonDansReelsStmt.all(String(nom))].map(r => String(r.nom ?? '').slice(0, 60))
+  const [montages, reels] = usagesSonStmts()
+  return [...montages.all(String(nom)), ...reels.all(String(nom))].map(r => String(r.nom ?? '').slice(0, 60))
 }
 
 /** The asset of a media library file (bare name), or null. */
