@@ -20,9 +20,16 @@ export const aiToolkitPret = (moteur) => fs.existsSync(path.join(dossierAiToolki
 const MODELES_LOCAUX = process.env.CREATOROS_ENTRAINEMENT_MODELES || null
 /* Apple Silicon (Metal/MPS): ai-toolkit runs on the mps device. bitsandbytes has no MPS kernel for
    its 8-bit optimizers (optimizer_update_8bit_blockwise), so plain AdamW: for a rank-32 LoRA the
-   optimizer state is small either way. Ops missing on MPS fall back to the CPU. */
+   optimizer state is small either way. Ops missing on MPS fall back to the CPU. Text embeddings
+   are cached up front and the text encoder unloaded: unified memory is shared with everything
+   else, and re-encoding every step (Qwen3-8B for Klein) made the steps swap-bound. The DiT trains
+   in bf16: on MPS ai-toolkit maps qfloat8 to convrot8, whose training path fake-quantizes and
+   keeps a dequantized copy of every weight for the backward pass (Klein: 79 GB and 57 s/step
+   quantized, 55 GB and 23 s/step in bf16 on a 64 GB M5 Pro). The text encoder stays quantized
+   (inference only). Each engine carries its own measured Apple timings (`mac`); without them the
+   engine is not offered on a Mac. CREATOROS_ENTRAINEMENT_FACTEUR scales every estimate. */
 const SUR_MAC = estApple()
-const FACTEUR_DUREE = Number(process.env.CREATOROS_ENTRAINEMENT_FACTEUR) || (SUR_MAC ? 6 : 1)
+const FACTEUR_DUREE = Number(process.env.CREATOROS_ENTRAINEMENT_FACTEUR) || 1
 const local = (...p) => path.join(MODELES_LOCAUX, ...p)
 const present = f => fs.existsSync(f) ? f : null
 /* Raw Krea 2 weights (training does not use the turbo version): CREATOROS_KREA2_RAW,
@@ -37,14 +44,15 @@ function poidsKrea2() {
   return bases.map(b => path.join(b, 'diffusion_models', '_krea2', 'krea2_raw_bf16.safetensors')).find(f => fs.existsSync(f)) ?? null
 }
 
-/** Engines the studio can train a LoRA for, with the measured duration per step. */
+/** Engines the studio can train a LoRA for, with the measured duration per step (RTX 5090; `mac`:
+    M5 Pro 64 GB, 5 images, buckets 512/768/1024, warm model cache). */
 export const MOTEURS_ENTRAINEMENT = {
   // local: the Qwen3-8B text encoder stays a hub id (fixed in ai-toolkit), served from the HF cache
-  klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, modele: () => {
+  klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, mac: { secParPas: 23, preparationS: 300 }, modele: () => {
     const chemin = MODELES_LOCAUX ? present(local('klein-9b', 'flux-2-klein-base-9b.safetensors')) && local('klein-9b') : 'black-forest-labs/FLUX.2-klein-base-9B'
     return chemin ? { arch: 'flux2_klein_9b', chemin } : null
   } },
-  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, modele: () => {
+  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, mac: { secParPas: 22, preparationS: 600 }, modele: () => {
     const f = poidsKrea2()
     if (!f) return null
     if (!MODELES_LOCAUX) return { arch: 'krea2', chemin: f }
@@ -53,14 +61,19 @@ export const MOTEURS_ENTRAINEMENT = {
   } },
   /* FLUX 3 Image Klein: trained on Klein Base (FLUX Kommunity license accepted on Hugging Face), applied
      to the studio's distilled model. 5.6B parameters: fits in bf16 without quantization. */
-  flux3: { nom: 'FLUX 3 Klein', secParPas: 2, preparationS: 300, modele: () => {
+  flux3: { nom: 'FLUX 3 Klein', secParPas: 2, preparationS: 300, mac: { secParPas: 11.2, preparationS: 420 }, modele: () => {
     if (!MODELES_LOCAUX) return { arch: 'flux3', chemin: 'black-forest-labs/flux-3-image-klein-base', sansQuantif: true }
     const chemin = present(local('flux3-klein-base', 'model.safetensors')) && local('flux3-klein-base'), te = present(local('qwen3-vl-4b-instruct'))
     return chemin && te ? { arch: 'flux3', chemin, sansQuantif: true, kwargs: { text_encoder_path: te } } : null
   } },
 }
-export const moteurEntrainementPret = m => !!MOTEURS_ENTRAINEMENT[m] && aiToolkitPret(m) && !!MOTEURS_ENTRAINEMENT[m].modele()
-export const dureeEstimeeMs = (moteur, pas) => { const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein; return Math.round((pas * m.secParPas + m.preparationS) * FACTEUR_DUREE * 1000) }
+export const moteurEntrainementPret = m => !!MOTEURS_ENTRAINEMENT[m] && (!SUR_MAC || !!MOTEURS_ENTRAINEMENT[m].mac) && aiToolkitPret(m) && !!MOTEURS_ENTRAINEMENT[m].modele()
+/** Timings of an engine on this machine (Apple values on a Mac), scaled by FACTEUR_DUREE. */
+export const tempsEntrainement = moteur => {
+  const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein, t = SUR_MAC && m.mac ? m.mac : m
+  return { secParPas: t.secParPas * FACTEUR_DUREE, preparationS: t.preparationS * FACTEUR_DUREE }
+}
+export const dureeEstimeeMs = (moteur, pas) => { const t = tempsEntrainement(moteur); return Math.round((pas * t.secParPas + t.preparationS) * 1000) }
 
 const pythonAiToolkit = (moteur) => [path.join(dossierAiToolkit(moteur), 'venv', 'bin', 'python'), path.join(dossierAiToolkit(moteur), '.venv', 'bin', 'python')].find(f => fs.existsSync(f)) ?? 'python3'
 
@@ -104,14 +117,14 @@ config:
         noise_scheduler: "flowmatch"
         timestep_type: weighted
         optimizer: "${SUR_MAC ? 'adamw' : 'adamw8bit'}"
-        lr: 1e-4
+${SUR_MAC ? '        cache_text_embeddings: true\n' : ''}        lr: 1e-4
         dtype: bf16
       model:
         arch: ${modele.arch}
         name_or_path: "${modele.chemin}"
-        quantize: ${modele.sansQuantif ? 'false' : 'true'}
+        quantize: ${modele.sansQuantif || SUR_MAC ? 'false' : 'true'}
         quantize_te: true
-        ${modele.sansQuantif ? 'qtype_te: qfloat8' : 'qtype: qfloat8'}
+        ${modele.sansQuantif || SUR_MAC ? 'qtype_te: qfloat8' : 'qtype: qfloat8'}
 ${modele.kwargs ? `        model_kwargs:\n${Object.entries(modele.kwargs).map(([k, v]) => `          ${k}: "${v}"`).join('\n')}\n` : ''}`
   const f = path.join(racine, 'config.yaml')
   fs.writeFileSync(f, yaml)

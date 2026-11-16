@@ -49,7 +49,7 @@ import * as planlong from './planlong.js'
 import { lancerCroquis, etatCroquis, choisirCroquis } from './croquis.js'
 import { lancerRestauration, etatRestauration } from './restauration.js'
 import { VOIX, changerVoix, cloner, cloneDisponible, dire, echantillon, synthetiser, voixAcceptee, voixDisponible } from './voix.js'
-import { aiToolkitPret, moteurEntrainementPret, MOTEURS_ENTRAINEMENT } from './entrainement.js'
+import { aiToolkitPret, moteurEntrainementPret, MOTEURS_ENTRAINEMENT, tempsEntrainement } from './entrainement.js'
 import { creerPersonnage, etatCreation, propositions } from './createurPersonnage.js'
 import { etatPack, lancerPack } from './packPub.js'
 import * as extensions from './extensions.js'
@@ -2156,7 +2156,7 @@ app.get('/api/entrainement', async () => {
       pas: av?.pas ?? (r.status === 'done' ? total : null), total, debut: r.started_at, fin: r.finished_at, resteMs, erreur: r.error ? String(r.error).slice(0, 200) : null,
       lora: r.status === 'done' && !p.entrainementEssai ? comfy.loraDestination(`${String(r.persona_id).replace(/[^a-z0-9_]/g, '')}_${p.entrainementMoteur ?? 'klein'}_${r.id.slice(6)}.safetensors`).name : null }
   })
-  const moteurs = Object.entries(MOTEURS_ENTRAINEMENT).map(([id, m]) => ({ id, nom: m.nom, pret: moteurEntrainementPret(id), secParPas: m.secParPas, preparationS: m.preparationS }))
+  const moteurs = Object.entries(MOTEURS_ENTRAINEMENT).map(([id, m]) => ({ id, nom: m.nom, pret: moteurEntrainementPret(id), ...tempsEntrainement(id) }))
   return { pret: aiToolkitPret(), moteurs, travaux }
 })
 app.post('/api/personas/:id/entrainer', async (req, reply) => {
