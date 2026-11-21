@@ -50,7 +50,7 @@ import { lancerCroquis, etatCroquis, choisirCroquis } from './croquis.js'
 import { lancerRestauration, etatRestauration } from './restauration.js'
 import { VOIX, changerVoix, cloner, cloneDisponible, dire, echantillon, synthetiser, voixAcceptee, voixDisponible } from './voix.js'
 import { aiToolkitPret, moteurEntrainementPret, MOTEURS_ENTRAINEMENT, tempsEntrainement } from './entrainement.js'
-import { creerDepuisImages, creerPersonnage, etatCreation, propositions } from './createurPersonnage.js'
+import { creerDepuisImages, creerPersonnage, entrainerSelection, etatCreation, propositions } from './createurPersonnage.js'
 import { etatPack, lancerPack } from './packPub.js'
 import * as extensions from './extensions.js'
 import * as workflowsComfy from './workflowsComfy.js'
@@ -78,7 +78,7 @@ const ROUTES_PROPRIETAIRE = new Set([
   // Public demo: a visitor starts only from studio-generated images, never from
   // a photo of a real person; the upload list is not public.
   'POST /api/upload', 'GET /api/uploads', 'POST /api/parole/voix', 'POST /api/parole/dire', 'POST /api/montage/musiques',
-  'POST /api/telephone', 'GET /api/telephone/:jeton/etat', 'POST /api/stage/glb', 'PUT /api/modeles/h3/:nom', 'POST /api/personas/:id/entrainer', 'POST /api/voix/clone', 'POST /api/voix/changer', 'POST /api/extensions/:id/installer', 'POST /api/workflows-comfy/:id/telecharger', 'POST /api/workflows-comfy/:id/lancer', 'POST /api/comfy/maj', 'POST /api/comfy/noeuds', 'POST /api/comfy/redemarrer', 'POST /api/extensions/:id/retirer', 'POST /api/personnages/propositions', 'POST /api/personnages/creer', 'POST /api/personnages/creer-depuis-images',
+  'POST /api/telephone', 'GET /api/telephone/:jeton/etat', 'POST /api/stage/glb', 'PUT /api/modeles/h3/:nom', 'POST /api/personas/:id/entrainer', 'POST /api/voix/clone', 'POST /api/voix/changer', 'POST /api/extensions/:id/installer', 'POST /api/workflows-comfy/:id/telecharger', 'POST /api/workflows-comfy/:id/lancer', 'POST /api/comfy/maj', 'POST /api/comfy/noeuds', 'POST /api/comfy/redemarrer', 'POST /api/extensions/:id/retirer', 'POST /api/personnages/propositions', 'POST /api/personnages/creer', 'POST /api/personnages/creer-depuis-images', 'POST /api/personnages/creer/:id/entrainer',
 ])
 const estProprietaire = req => {
   if (!CONFIG.cleProprietaire) return true
@@ -2135,16 +2135,21 @@ app.post('/api/personnages/propositions', async (req, reply) => {
   try { return { jobs: propositions(req.body?.traits) } } catch (e) { reply.code(400); return { error: String(e.message || e) } }
 })
 app.post('/api/personnages/creer', async (req, reply) => {
-  try { return creerPersonnage({ assetId: req.body?.assetId, nom: req.body?.nom, traits: req.body?.traits, entrainer: req.body?.entrainer === true, moteurs: Array.isArray(req.body?.moteurs) ? req.body.moteurs : undefined }) }
+  try { return creerPersonnage({ assetId: req.body?.assetId, nom: req.body?.nom, traits: req.body?.traits, entrainer: req.body?.entrainer === true, moteurs: Array.isArray(req.body?.moteurs) ? req.body.moteurs : undefined, verifier: req.body?.verifier === true }) }
   catch (e) { reply.code(400); return { error: String(e.message || e) } }
 })
 /* LOCAL FORK PATCH: a character from 1 to 12 imported photos (uploads from POST /api/upload, or library photo ids); progress through GET /api/personnages/creer/:id */
 app.post('/api/personnages/creer-depuis-images', async (req, reply) => {
   const b = req.body ?? {}
-  try { return creerDepuisImages({ images: b.images, profil: b.profil, nom: b.nom, traits: b.traits, adulte: b.adulte === true, entrainer: b.entrainer === true, moteurs: Array.isArray(b.moteurs) ? b.moteurs : undefined }) }
+  try { return creerDepuisImages({ images: b.images, profil: b.profil, nom: b.nom, traits: b.traits, adulte: b.adulte === true, entrainer: b.entrainer === true, moteurs: Array.isArray(b.moteurs) ? b.moteurs : undefined, verifier: b.verifier === true }) }
   catch (e) { reply.code(400); return { error: String(e.message || e) } }
 })
 app.get('/api/personnages/creer/:id', async (req, reply) => etatCreation(req.params.id) ?? (reply.code(404), { error: 'création inconnue' }))
+/* LOCAL FORK PATCH: train a creation on the images the owner kept (`garder`: keys of etatCreation's `candidats`), also after a failed training */
+app.post('/api/personnages/creer/:id/entrainer', async (req, reply) => {
+  try { return entrainerSelection(req.params.id, { garder: req.body?.garder, moteurs: Array.isArray(req.body?.moteurs) ? req.body.moteurs : undefined }) }
+  catch (e) { reply.code(e.message === 'création inconnue' ? 404 : 400); return { error: String(e.message || e) } }
+})
 
 /** Character training on library images (owner only). */
 /** LoRA trainings of the last 14 days: status, steps done, estimated remaining time, produced LoRA. */

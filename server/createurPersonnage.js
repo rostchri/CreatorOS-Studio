@@ -62,8 +62,10 @@ const nomValide = nom => {
    and the scenes on Klein, track the creation. `refs` are ComfyUI input names given to every render
    after the profile photo; `extras` are absolute paths added to the training set once the scenes
    are done. The photo is cropped to a temporary file first, so an unreadable image leaves no
-   half-created character behind. `ancrageY` is where the square sits vertically (0 = top, 0.5 = centre). */
-function lancerCreation({ nom, x, src, ancrageY = 0.5, fictif, credit, description: desc, scenes, refs = [], extras = [], aEntrainer }) {
+   half-created character behind. LOCAL FORK PATCH: with `verifier` (and an engine to train), the
+   training waits for the owner to pick its images (entrainerSelection) instead of starting alone.
+   `ancrageY` is where the square sits vertically (0 = top, 0.5 = centre). */
+function lancerCreation({ nom, x, src, ancrageY = 0.5, fictif, credit, description: desc, scenes, refs = [], extras = [], aEntrainer, verifier = false }) {
   const tmp = path.join(CONFIG.dataDir, `.avatar-${Date.now().toString(36)}-${process.pid}.jpg`)
   try { execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vf', `crop=min(iw\\,ih):min(iw\\,ih):(iw-ow)/2:(ih-oh)*${ancrageY},scale=512:512`, '-frames:v', '1', '-q:v', '3', tmp]) }
   catch { fs.rmSync(tmp, { force: true }); throw new Error('photo illisible : choisis une autre image') }
@@ -88,19 +90,19 @@ function lancerCreation({ nom, x, src, ancrageY = 0.5, fictif, credit, descripti
     userPrompt: 'planche de référence' })
   const images = scenes.map(sc => enfile({ width: 832, height: 1216, composedPositive: `${sc}, photorealistic${consigne}`, userPrompt: sc }))
   const id = `perso-${Date.now().toString(36)}`
-  suivis.set(id, { id, personaId: p.id, nom, planche, images, extras, entrainer: aEntrainer.length > 0, moteurs: aEntrainer, entrainements: [], debut: Date.now(), declencheur: `${nom.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}x` })
+  suivis.set(id, { id, personaId: p.id, nom, planche, images, extras, entrainer: aEntrainer.length > 0, moteurs: aEntrainer, verifier: verifier === true && aEntrainer.length > 0, entrainements: [], debut: Date.now(), declencheur: `${nom.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}x` })
   garder()
   return etatCreation(id)
 }
 
-export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
+export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs, verifier }) {
   const aEntrainer = moteursChoisis(moteurs, entrainer)
   const x = lireTraits(traits)
   const n = nomValide(nom)
   const a = store.getAsset(String(assetId ?? ''))
   if (!a || a.media_type !== 'photo') throw new Error('choisis l’un des portraits proposés')
   const src = path.join(CONFIG.mediaDir, path.basename(a.filename ?? a.uri))
-  return lancerCreation({ nom: n, x, src, fictif: portraitSurTexteSeul(a), scenes: SCENES, aEntrainer,
+  return lancerCreation({ nom: n, x, src, fictif: portraitSurTexteSeul(a), scenes: SCENES, aEntrainer, verifier,
     description: `${n} : ${description(x)}, ${x.style}`,
     credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage fictif créé dans le studio, libre' } })
 }
@@ -148,7 +150,7 @@ function resoudreImage(entree) {
  *  `profil`: index into `images` or the entry itself (default: the first). `adulte` must be true:
  *  the person is an adult and agreed. `traits` is optional (age 21-80 required if given). Such a
  *  character is never marked fictitious: SFW only, adult mode stays locked (see fictif.js). */
-export function creerDepuisImages({ images, profil, nom, traits, adulte, entrainer, moteurs }) {
+export function creerDepuisImages({ images, profil, nom, traits, adulte, entrainer, moteurs, verifier }) {
   if (adulte !== true) throw new Error('confirme que la personne est majeure et a donné son accord')
   const aEntrainer = moteursChoisis(moteurs, entrainer)
   const n = nomValide(nom)
@@ -165,23 +167,72 @@ export function creerDepuisImages({ images, profil, nom, traits, adulte, entrain
   const [pro, ...autres] = uniques
   const refs = autres.slice(0, plan.references)
   for (const r of refs) if (r.copie) { fs.copyFileSync(r.chemin, path.join(CONFIG.comfyInput, r.nom)); store.noterInput(r.nom, 'upload') }
-  return lancerCreation({ nom: n, x, src: pro.chemin, ancrageY: 0.15, fictif: false, scenes: plan.scenes, aEntrainer,
+  return lancerCreation({ nom: n, x, src: pro.chemin, ancrageY: 0.15, fictif: false, scenes: plan.scenes, aEntrainer, verifier,
     refs: refs.map(r => r.nom), extras: plan.uploadsEntrainement ? uniques.map(u => u.chemin) : [],
     description: `${n} : personnage créé à partir de photos importées${x ? `, ${description(x)}` : ''}`,
     credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage créé à partir de photos importées (personne majeure, accord confirmé par le propriétaire)' } })
+}
+
+/* ---- LOCAL FORK PATCH: the owner picks the training images (kanban tf-mwqowv3x-fqxc) ---- */
+const EN_COURS = ['queued', 'rendering']
+const scenesTerminees = c => c.images.every(j => { const s = store.getJob(j)?.status; return s && !EN_COURS.includes(s) })
+const entrainementEnCours = c => (c.entrainements ?? []).some(e => EN_COURS.includes(store.getJob(e.job)?.status))
+/** Images a creation can train on: the generated scenes (library assets), then the imported photos
+ *  (extras). `cle` is what entrainerSelection takes back, `url` what the browser shows, `chemin`
+ *  stays on the server. An imported upload lives in the ComfyUI input folder, a library photo in media. */
+function candidats(c) {
+  const generes = c.images.flatMap(j => store.assetsOfJob(j).filter(a => !String(a.id).endsWith('-full')).map(a => {
+    const nom = path.basename(a.filename ?? a.uri)
+    return { cle: `asset:${a.id}`, url: `/media/${nom}`, chemin: path.join(CONFIG.mediaDir, nom), source: 'scene' }
+  }))
+  const importes = (c.extras ?? []).filter(f => fs.existsSync(f)).map(f => {
+    const nom = path.basename(f)
+    const url = path.resolve(path.dirname(f)) === path.resolve(CONFIG.comfyInput) ? `/api/uploads/${encodeURIComponent(nom)}` : `/media/${encodeURIComponent(nom)}`
+    return { cle: `fichier:${nom}`, url, chemin: f, source: 'photo' }
+  })
+  const vus = new Set()
+  return [...generes, ...importes].filter(x => fs.existsSync(x.chemin) && !vus.has(x.chemin) && vus.add(x.chemin))
 }
 
 export function etatCreation(id) {
   const c = suivis.get(id)
   if (!c) return null
   const fait = c.images.filter(j => store.getJob(j)?.status === 'done').length
-  return { id, personaId: c.personaId, nom: c.nom, planche: store.getJob(c.planche)?.status ?? null, images: `${fait}/${c.images.length}`, entrainements: (c.entrainements ?? (c.entrainement ? [{ moteur: 'klein', job: c.entrainement }] : [])).map(e => ({ ...e, statut: store.getJob(e.job)?.status ?? null })),
-    entrainementEtat: (() => { const l = (c.entrainements ?? []).map(e => store.getJob(e.job)?.status); return !l.length ? null : l.every(x => x === 'done') ? 'done' : l.some(x => x === 'rendering') ? 'rendering' : l.some(x => x === 'queued') ? 'queued' : l.at(-1) ?? null })() }
+  const entrainements = (c.entrainements ?? (c.entrainement ? [{ moteur: 'klein', job: c.entrainement }] : [])).map(e => ({ ...e, statut: store.getJob(e.job)?.status ?? null }))
+  const entrainementEtat = (() => { const l = (c.entrainements ?? []).map(e => store.getJob(e.job)?.status); return !l.length ? null : l.every(x => x === 'done') ? 'done' : l.some(x => x === 'rendering') ? 'rendering' : l.some(x => x === 'queued') ? 'queued' : l.at(-1) ?? null })()
+  /* The pick is offered once the scenes are finished and no training runs: while the creation
+     waits for it (verifier), and again after a training that did not finish (to train anew). */
+  const choix = scenesTerminees(c) && !entrainementEnCours(c) && ((c.verifier && !c.entrainements?.length) || (entrainements.length > 0 && entrainementEtat !== 'done'))
+  return { id, personaId: c.personaId, nom: c.nom, planche: store.getJob(c.planche)?.status ?? null, images: `${fait}/${c.images.length}`, entrainements, entrainementEtat,
+    verifier: !!c.verifier, moteurs: c.moteurs ?? [], declencheur: c.declencheur,
+    ...(choix ? { candidats: candidats(c).map(({ cle, url, source }) => ({ cle, url, source })), entrainementMax: ENTRAINEMENT_MAX } : {}) }
+}
+
+/** Starts the creation's training on the images the owner kept (`garder`: candidate keys from
+ *  etatCreation, 8 to 30) and the checked engines (default: the ones chosen at creation, else Klein).
+ *  Also the way to train anew after a failed or cancelled training. */
+export function entrainerSelection(id, { garder: selection, moteurs } = {}) {
+  const c = suivis.get(id)
+  if (!c) throw new Error('création inconnue')
+  if (!scenesTerminees(c)) throw new Error('les images du personnage ne sont pas encore prêtes')
+  if (entrainementEnCours(c)) throw new Error('un entraînement de ce personnage est déjà en cours')
+  const parCle = new Map(candidats(c).map(x => [x.cle, x.chemin]))
+  const fichiers = [...new Set((Array.isArray(selection) ? selection : []).map(k => parCle.get(String(k))).filter(Boolean))]
+  if (fichiers.length < 8) throw new Error('choisis au moins 8 images du personnage')
+  if (fichiers.length > ENTRAINEMENT_MAX) throw new Error(`choisis au plus ${ENTRAINEMENT_MAX} images`)
+  const choisis = moteursChoisis(moteurs, false)
+  const liste = choisis.length ? choisis : c.moteurs?.length ? c.moteurs : ['klein']
+  c.entrainements = liste.map(moteur => ({ moteur, job: enqueueEntrainement({ personaId: c.personaId, images: fichiers, declencheur: c.declencheur, pas: 1200, moteur }).id }))
+  c.entrainer = true
+  c.verifier = false
+  c.moteurs = liste
+  garder()
+  return etatCreation(id)
 }
 
 setInterval(() => {
   for (const c of suivis.values()) {
-    if (!c.entrainer || c.entrainement || c.entrainements?.length) continue
+    if (!c.entrainer || c.verifier || c.entrainement || c.entrainements?.length) continue
     const etats = c.images.map(j => store.getJob(j)?.status)
     if (etats.some(s => s !== 'done' && s !== 'blocked')) continue
     const generes = c.images.flatMap(j => store.assetsOfJob(j).filter(a => !String(a.id).endsWith('-full')).map(a => path.join(CONFIG.mediaDir, path.basename(a.filename))))

@@ -1,6 +1,8 @@
 /* Create a character, studio layout: trait choices in accordions on the left, the four
    proposed faces then the creation on the right (see server/createurPersonnage.js).
-   LOCAL FORK PATCH: a second mode starts from 1 to 12 imported photos (creerDepuisImages). */
+   LOCAL FORK PATCH: a second mode starts from 1 to 12 imported photos (creerDepuisImages), and the
+   owner can check the images before the LoRA trains on them (entrainerSelection), or train anew
+   after a training that did not finish. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { t, tServeur } from '../../i18n'
 import { useAppStore } from '../../store/useAppStore'
@@ -45,7 +47,16 @@ export function CreerPersonnageView() {
   const [moteursDispo, setMoteursDispo] = useState<{ id: string; nom: string; pret: boolean; secParPas: number | null; preparationS: number | null }[]>([])
   const [moteurs, setMoteurs] = useState<Set<string>>(new Set(['klein']))
   useEffect(() => { void fetch('/api/entrainement').then(r => r.json()).then(d => setMoteursDispo(d.moteurs ?? [])).catch(() => {}) }, [])
-  const [suivi, setSuivi] = useState<{ id: string; planche: string | null; images: string; entrainementEtat: string | null; entrainements?: { moteur: string; statut: string | null }[] } | null>(null)
+  type Candidat = { cle: string; url: string; source: 'scene' | 'photo' }
+  const [suivi, setSuivi] = useState<{ id: string; planche: string | null; images: string; entrainementEtat: string | null; entrainements?: { moteur: string; statut: string | null }[]; candidats?: Candidat[]; entrainementMax?: number } | null>(null)
+  // checking the images before training is the default: a single bad image can spoil the LoRA
+  const [verifier, setVerifier] = useState(true)
+  const [garder, setGarder] = useState<{ suivi: string; cles: Set<string> } | null>(null)
+  // the pick starts with every image kept (within the limit), once per creation
+  useEffect(() => {
+    if (!suivi?.candidats?.length || garder?.suivi === suivi.id) return
+    setGarder({ suivi: suivi.id, cles: new Set(suivi.candidats.slice(0, suivi.entrainementMax ?? 30).map(c => c.cle)) })
+  }, [suivi, garder])
   const [msg, setMsg] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
   useEffect(() => {
@@ -78,9 +89,10 @@ export function CreerPersonnageView() {
     return { ...x, [cle]: (l.includes(v) ? l.filter(y => y !== v) : [...l, v]).join(', ') }
   })
   const proposer = async () => { setOccupe(true); const d = await poster('/api/personnages/propositions', { traits }); setOccupe(false); if (d) { setJobs(d.jobs); setChoisi(null); setSuivi(null); historique.ajouter(d.jobs); for (const j of d.jobs) void s.adoptServerJob(j) } }
-  const creer = async () => { const d = await poster('/api/personnages/creer', { assetId: choisi, nom, traits, moteurs: [...moteurs].filter(m => moteursDispo.some(x => x.id === m && x.pret)) }); if (d) { setSuivi(d); await s.refreshPersona() } }
+  const moteursPrets = () => [...moteurs].filter(m => moteursDispo.some(x => x.id === m && x.pret))
+  const creer = async () => { const d = await poster('/api/personnages/creer', { assetId: choisi, nom, traits, moteurs: moteursPrets(), verifier }); if (d) { setSuivi(d); await s.refreshPersona() } }
   const creerDepuisPhotos = async () => {
-    const d = await poster('/api/personnages/creer-depuis-images', { images: photos.map(p => p.nom), profil, nom, adulte, traits: avecTraits ? traits : undefined, moteurs: [...moteurs].filter(m => moteursDispo.some(x => x.id === m && x.pret)) })
+    const d = await poster('/api/personnages/creer-depuis-images', { images: photos.map(p => p.nom), profil, nom, adulte, traits: avecTraits ? traits : undefined, moteurs: moteursPrets(), verifier })
     if (d) { setSuivi(d); await s.refreshPersona() }
   }
   // one upload after the other (a photo is up to 48 MiB); a new batch after a finished creation starts afresh
@@ -113,6 +125,49 @@ export function CreerPersonnageView() {
       {m.nom} <span className="texte-doux">{dureeMin(m, 1200) === null ? t('durée inconnue') : `~${dureeMin(m, 1200)} min`}</span>
     </label>
   ))
+  const optionVerifier = (
+    <label className="flex gap-1.5 items-center" style={{ cursor: 'pointer' }}>
+      <input type="checkbox" checked={verifier} onChange={e => setVerifier(e.target.checked)} />
+      {t('vérifier les images avant l’entraînement')}
+    </label>
+  )
+  const lancerEntrainement = async () => {
+    if (!suivi || !garder) return
+    setOccupe(true)
+    const d = await poster(`/api/personnages/creer/${encodeURIComponent(suivi.id)}/entrainer`, { garder: [...garder.cles], moteurs: moteursPrets() })
+    setOccupe(false)
+    if (d) setSuivi(d)
+  }
+  const max = suivi?.entrainementMax ?? 30
+  const nGarde = garder?.suivi === suivi?.id ? garder?.cles.size ?? 0 : 0
+  const basculer = (cle: string) => setGarder(g => {
+    if (!g) return g
+    const cles = new Set(g.cles)
+    if (cles.has(cle)) cles.delete(cle); else cles.add(cle)
+    return { ...g, cles }
+  })
+  const blocChoix = suivi?.candidats?.length ? (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <b>{t('Images pour la LoRA')} · {nGarde}/{max}</b>
+      <span className="texte-doux">{suivi.entrainements?.length
+        ? t('L’entraînement précédent n’a pas abouti : garde les bonnes images et relance-le.')
+        : t('Retire les images ratées (visage différent, mains, flou) : la LoRA apprend tout ce qu’elle voit. De 8 à {n} images.', { n: max })}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+        {suivi.candidats.map(c => { const on = !!garder?.cles.has(c.cle); return (
+          <button key={c.cle} onClick={() => basculer(c.cle)} aria-pressed={on} className={`carte-visage ${on ? 'on' : ''}`} style={{ opacity: on ? 1 : 0.35, position: 'relative' }} title={c.source === 'photo' ? t('photo importée') : t('image générée')}>
+            <img src={c.url} alt="" loading="lazy" />
+            <small style={{ position: 'absolute', top: 4, left: 6 }}>{on ? '✓' : ''}{c.source === 'photo' ? ' 📷' : ''}</small>
+          </button>) })}
+      </div>
+      <div className="flex gap-2 items-center flex-wrap">
+        <button className="pill" onClick={() => setGarder(g => g && ({ ...g, cles: new Set(suivi.candidats!.slice(0, max).map(c => c.cle)) }))}>{t('Tout garder')}</button>
+        <button className="pill" onClick={() => setGarder(g => g && ({ ...g, cles: new Set() }))}>{t('Tout retirer')}</button>
+        <span className="texte-doux">{t('entraîner sa LoRA pour')}</span>
+        {choixMoteurs}
+        <button className="pill" disabled={occupe || nGarde < 8 || nGarde > max || moteursPrets().length === 0} onClick={() => void lancerEntrainement()}>{t('Entraîner sur {n} images', { n: nGarde })}</button>
+      </div>
+    </div>
+  ) : undefined
   const lignesSuivi = suivi && <span className="texte-doux">{t('Planche : {p} · images : {i}', { p: suivi.planche ?? '…', i: suivi.images })}{suivi.entrainements?.length ? ` · ${suivi.entrainements.map(e => `LoRA ${e.moteur === 'krea' ? 'Krea 2' : 'Klein'} : ${e.statut ?? '…'}`).join(' · ')}` : suivi.entrainementEtat ? ` · ${t('LoRA : {e}', { e: suivi.entrainementEtat })}` : ''}</span>
   const resultatPhotos = photos.length > 0 ? (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -132,6 +187,7 @@ export function CreerPersonnageView() {
           <input className="champ" value={nom} onChange={e => setNom(e.target.value)} placeholder={t('nom du personnage')} maxLength={40} />
           <span className="texte-doux">{t('entraîner sa LoRA pour')}</span>
           {choixMoteurs}
+          {optionVerifier}
           <label className="flex gap-1.5 items-center" style={{ flexBasis: '100%', cursor: 'pointer' }}>
             <input type="checkbox" checked={adulte} onChange={e => setAdulte(e.target.checked)} />
             {t('Je confirme que la personne est majeure et qu’elle a donné son accord.')}
@@ -141,6 +197,7 @@ export function CreerPersonnageView() {
         </div>
       )}
       {lignesSuivi}
+      {blocChoix}
     </div>
   ) : undefined
   const resultatTexte = jobs.length > 0 ? (
@@ -157,13 +214,16 @@ export function CreerPersonnageView() {
           <input className="champ" value={nom} onChange={e => setNom(e.target.value)} placeholder={t('nom du personnage')} maxLength={40} />
           <span className="texte-doux">{t('entraîner sa LoRA pour')}</span>
           {choixMoteurs}
+          {optionVerifier}
           <button className="pill" disabled={nom.trim().length < 2} onClick={() => void creer()}>{t('Créer le personnage')}</button>
         </div>
       )}
       {lignesSuivi}
+      {blocChoix}
     </div>
   ) : undefined
-  const resultat = mode === 'photos' ? resultatPhotos : resultatTexte
+  // a creation resumed without its photos or faces (other browser, cleared memo) still shows the pick
+  const resultat = (mode === 'photos' ? resultatPhotos : resultatTexte) ?? blocChoix
   // trait choices: the whole left pane in text mode, an optional block in photo mode
   const blocTraits = <>
     <div className="segmente">
