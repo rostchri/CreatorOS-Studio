@@ -14,13 +14,24 @@ import { etageLora } from './etageLora.js'
 import { personaLoraNames } from './persona.js'
 import * as sdk from './transport-sdk.js'
 import { alleger } from './allege.js'
+import { estAmd } from './carteGraphique.js'
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 /* ---------- recipe loading ---------- */
 
+/* AMD (ROCm): a recipe may have a "<name>-rocm.json" twin, adapted to what ROCm lacks
+   (SageAttention, torch.compile, int8-convrot weights without a `sansCuda` replacement)
+   and to a 24 GB card. allege.js already swaps the weights of UNETLoader/CLIPLoader; the
+   twin is for the rest. When it exists on an AMD machine it is loaded instead. */
+export function recetteMachine(file) {
+  if (!estAmd() || !file.endsWith('.json') || file.endsWith('-rocm.json')) return file
+  const rocm = file.slice(0, -'.json'.length) + '-rocm.json'
+  return fs.existsSync(path.join(CONFIG.workflowsDir, rocm)) ? rocm : file
+}
+
 export function loadWorkflow(file) {
-  const full = path.join(CONFIG.workflowsDir, file)
+  const full = path.join(CONFIG.workflowsDir, recetteMachine(file))
   // Reject names that would escape the workflows directory.
   if (!full.startsWith(CONFIG.workflowsDir + path.sep)) throw new Error('workflow hors périmètre')
   const wf = JSON.parse(fs.readFileSync(full, 'utf8'))
