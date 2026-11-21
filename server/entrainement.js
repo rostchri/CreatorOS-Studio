@@ -65,10 +65,18 @@ const NAN_SUITE_MAX = 10
 const RESOLUTION = (process.env.CREATOROS_ENTRAINEMENT_RESOLUTION || '512, 768, 1024')
   .split(/[, ]+/).map(x => Number(x)).filter(Number.isFinite)
 const RANG = Number(process.env.CREATOROS_ENTRAINEMENT_RANK) > 0 ? Number(process.env.CREATOROS_ENTRAINEMENT_RANK) : 32
-/* The one AMD configuration that was measured end to end: rank 16 on a single 512 bucket, Klein.
-   Anything else (the fork default above: rank 32, three buckets) has no measurement on AMD, so no
-   number is invented for it — the estimate stays null and the UI says so. */
-const MESURE_AMD = SUR_AMD && RANG === 16 && RESOLUTION.length === 1 && RESOLUTION[0] === 512
+/* AMD configurations measured end to end (Klein), keyed rank@sorted buckets. Anything else has
+   no measurement on AMD, so no number is invented for it — the estimate stays null and the UI
+   says so. All four fit the 24 GB card once expandable_segments is off (it silently corrupts
+   live tensors on gfx1100, pytorch#204212). */
+const MESURES_AMD = {
+  '16@512': { secParPas: 2.4, preparationS: 45 },
+  // Klein on gfx1100, 100 steps each, 17 images, PYTORCH_HIP_ALLOC_CONF unset: peak 15.9 / 15.5 / 19.2 GiB
+  '32@512,768': { secParPas: 3.3, preparationS: 45 },
+  '32@768': { secParPas: 4.0, preparationS: 45 },
+  '32@512,768,1024': { secParPas: 4.5, preparationS: 45 },
+}
+const MESURE_AMD = SUR_AMD ? MESURES_AMD[`${RANG}@${[...RESOLUTION].sort((a, b) => a - b).join(',')}`] ?? null : null
 const FACTEUR_DUREE = Number(process.env.CREATOROS_ENTRAINEMENT_FACTEUR) || 1
 const local = (...p) => path.join(MODELES_LOCAUX, ...p)
 const present = f => fs.existsSync(f) ? f : null
@@ -91,11 +99,10 @@ function poidsKrea2() {
 export const MOTEURS_ENTRAINEMENT = {
   // local: the Qwen3-8B text encoder stays a hub id (fixed in ai-toolkit), served from the HF cache
   klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, mac: { secParPas: 23, preparationS: 300 }, surAmd: true,
-    /* Measured on gfx1100 / 24 GB: 2,2-2,4 s/step over 20 steps, both models quantized in 45 s
-       (12 s warm). Only that bucket/rank combination — hence the MESURE_AMD guard: capping
-       CREATOROS_ENTRAINEMENT_RANK or _RESOLUTION away from the measured recipe drops the number
-       rather than extrapolating it. */
-    amd: MESURE_AMD ? { secParPas: 2.4, preparationS: 45 } : null, modele: () => {
+    /* Measured on gfx1100 / 24 GB (see MESURES_AMD): only those bucket/rank combinations carry a
+       number — setting CREATOROS_ENTRAINEMENT_RANK or _RESOLUTION to anything else drops it
+       rather than extrapolating. */
+    amd: MESURE_AMD, modele: () => {
     const chemin = MODELES_LOCAUX ? present(local('klein-9b', 'flux-2-klein-base-9b.safetensors')) && local('klein-9b') : 'black-forest-labs/FLUX.2-klein-base-9B'
     return chemin ? { arch: 'flux2_klein_9b', chemin } : null
   } },
