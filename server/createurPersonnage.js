@@ -1,7 +1,9 @@
 /* Create a character from scratch: traits (adult, 21+) produce 4 portraits; the chosen one
    becomes the profile photo of a new character, then the studio renders a reference sheet
    and 12 varied images on FLUX.2 Klein (face held by the profile photo) and, if requested,
-   trains its Klein LoRA on them. Owner only. */
+   trains its Klein LoRA on them. Owner only.
+   LOCAL FORK PATCH: a second entry, creerDepuisImages, starts from 1 to 12 imported photos instead
+   of the four generated portraits (see planDepuisImages for what each count triggers). */
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -48,36 +50,125 @@ try {
 } catch { /* no saved tracking */ }
 const garder = () => { try { fs.writeFileSync(FICHIER_SUIVIS, JSON.stringify([...suivis.values()])) } catch (e) { console.warn(`[création] suivi non enregistré : ${e.message || e}`) } }
 
-export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
-  // engines to train: the checked list, or the legacy boolean (Klein only)
-  const aEntrainer = Array.isArray(moteurs) ? moteurs.map(String).filter(m => m === 'klein' || m === 'krea').filter((m, i, l) => l.indexOf(m) === i) : entrainer ? ['klein'] : []
-  const x = lireTraits(traits)
+/* Engines to train: the checked list, or the legacy boolean (Klein only). */
+const moteursChoisis = (moteurs, entrainer) => Array.isArray(moteurs) ? moteurs.map(String).filter(m => m === 'klein' || m === 'krea').filter((m, i, l) => l.indexOf(m) === i) : entrainer ? ['klein'] : []
+const nomValide = nom => {
   const n = nettoie(nom, 40)
   if (n.length < 2 || t0Hit(n)) throw new Error('donne un nom au personnage')
-  const a = store.getAsset(String(assetId ?? ''))
-  if (!a || a.media_type !== 'photo') throw new Error('choisis l’un des portraits proposés')
-  const src = path.join(CONFIG.mediaDir, path.basename(a.filename ?? a.uri))
+  return n
+}
+
+/* Shared by both entries: crop the profile photo, create the character, queue the reference sheet
+   and the scenes on Klein, track the creation. `refs` are ComfyUI input names given to every render
+   after the profile photo; `extras` are absolute paths added to the training set once the scenes
+   are done. The photo is cropped to a temporary file first, so an unreadable image leaves no
+   half-created character behind. `ancrageY` is where the square sits vertically (0 = top, 0.5 = centre). */
+function lancerCreation({ nom, x, src, ancrageY = 0.5, fictif, credit, description: desc, scenes, refs = [], extras = [], aEntrainer }) {
+  const tmp = path.join(CONFIG.dataDir, `.avatar-${Date.now().toString(36)}-${process.pid}.jpg`)
+  try { execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vf', `crop=min(iw\\,ih):min(iw\\,ih):(iw-ow)/2:(ih-oh)*${ancrageY},scale=512:512`, '-frames:v', '1', '-q:v', '3', tmp]) }
+  catch { fs.rmSync(tmp, { force: true }); throw new Error('photo illisible : choisis une autre image') }
   // the studio's active character is unchanged: the new one is picked from the menu
   const avant = personaActif().id
-  const p = creerPersona({ name: n })
+  const p = creerPersona({ name: nom })
   if (avant) activer(avant)
-  enregistrerPersona({ preamble: description(x), description: `${n} : ${description(x)}, ${x.style}`, credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage fictif créé dans le studio, libre' } }, p.id)
+  enregistrerPersona({ preamble: x ? description(x) : '', description: desc, credit }, p.id)
   const dossier = path.join(CONFIG.mediaDir, '.persona', p.id.replace(/[^a-z0-9_]/g, ''))
   fs.mkdirSync(dossier, { recursive: true })
   // LOCAL FORK PATCH: a deleted character's photo with the same id would win over avatar.jpg (png first)
   for (const e of ['.png', '.webp']) fs.rmSync(path.join(dossier, `avatar${e}`), { force: true })
-  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vf', 'crop=min(iw\\,ih):min(iw\\,ih),scale=512:512', '-q:v', '3', path.join(dossier, 'avatar.jpg')])
+  try { fs.renameSync(tmp, path.join(dossier, 'avatar.jpg')) } catch { fs.copyFileSync(tmp, path.join(dossier, 'avatar.jpg')); fs.rmSync(tmp, { force: true }) }
   // LOCAL FORK PATCH: the character is fictitious only if its portrait comes from a text-only render
-  if (portraitSurTexteSeul(a)) marquerFictif(p.id, true)
-  const planche = enqueue({ mode: 'photo', register: 'sfw', personaId: p.id, purpose: 'creative', photoEngine: 'klein', composedNegative: '', width: 1344, height: 768,
-    composedPositive: `Character reference sheet of the same person: front view, three-quarter view, profile and back view, full body, same outfit (${x.style || 'casual clothes'}), plain light grey background, even studio light`,
-    userPrompt: 'planche de référence' }).id
-  const images = SCENES.map(s => enqueue({ mode: 'photo', register: 'sfw', personaId: p.id, purpose: 'creative', photoEngine: 'klein', composedNegative: '', width: 832, height: 1216,
-    composedPositive: `${s}, photorealistic`, userPrompt: s }).id)
+  if (fictif) marquerFictif(p.id, true)
+  const tenue = x?.style || 'casual clothes'
+  // other photos of the same person are identity only: not pose, clothes or background
+  const consigne = refs.length ? ' The other reference images show the same person: use them for identity only, not for pose, clothes or background.' : ''
+  const enfile = (o) => enqueue({ mode: 'photo', register: 'sfw', personaId: p.id, purpose: 'creative', photoEngine: 'klein', composedNegative: '', ...(refs.length ? { references: refs } : {}), ...o }).id
+  const planche = enfile({ width: 1344, height: 768,
+    composedPositive: `Character reference sheet of the same person: front view, three-quarter view, profile and back view, full body, same outfit (${tenue}), plain light grey background, even studio light${consigne}`,
+    userPrompt: 'planche de référence' })
+  const images = scenes.map(sc => enfile({ width: 832, height: 1216, composedPositive: `${sc}, photorealistic${consigne}`, userPrompt: sc }))
   const id = `perso-${Date.now().toString(36)}`
-  suivis.set(id, { id, personaId: p.id, nom: n, planche, images, entrainer: aEntrainer.length > 0, moteurs: aEntrainer, entrainements: [], debut: Date.now(), declencheur: `${n.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}x` })
+  suivis.set(id, { id, personaId: p.id, nom, planche, images, extras, entrainer: aEntrainer.length > 0, moteurs: aEntrainer, entrainements: [], debut: Date.now(), declencheur: `${nom.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}x` })
   garder()
   return etatCreation(id)
+}
+
+export function creerPersonnage({ assetId, nom, traits, entrainer, moteurs }) {
+  const aEntrainer = moteursChoisis(moteurs, entrainer)
+  const x = lireTraits(traits)
+  const n = nomValide(nom)
+  const a = store.getAsset(String(assetId ?? ''))
+  if (!a || a.media_type !== 'photo') throw new Error('choisis l’un des portraits proposés')
+  const src = path.join(CONFIG.mediaDir, path.basename(a.filename ?? a.uri))
+  return lancerCreation({ nom: n, x, src, fictif: portraitSurTexteSeul(a), scenes: SCENES, aEntrainer,
+    description: `${n} : ${description(x)}, ${x.style}`,
+    credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage fictif créé dans le studio, libre' } })
+}
+
+/* ---- LOCAL FORK PATCH: a character from imported photos ---- */
+export const IMAGES_MAX = 12
+export const REFERENCES_MAX = 5 // the profile photo takes the first of Klein's 6 reference places
+export const ENTRAINEMENT_MAX = 30
+/* Six scenes are enough to top up a set that already holds six or more real photos: pose and light. */
+const SCENES_APPOINT = [0, 1, 4, 5, 8, 9].map(i => SCENES[i])
+const IMAGE = /\.(png|jpe?g|webp)$/i
+
+/** What `n` imported photos trigger (pure). 1: sheet + 12 scenes held by the profile photo alone.
+ *  2-5: the same scenes, the other photos also given as references. 6 and more: only 6 scenes, the
+ *  uploads go straight into the training set (from 2 photos on). */
+export function planDepuisImages(n) {
+  if (!Number.isInteger(n) || n < 1 || n > IMAGES_MAX) throw new Error(`importe de 1 à ${IMAGES_MAX} photos`)
+  const scenes = n >= 6 ? SCENES_APPOINT : SCENES
+  const uploads = n >= 2 ? n : 0
+  return { scenes, references: Math.min(n - 1, REFERENCES_MAX), uploadsEntrainement: uploads, entrainement: Math.min(ENTRAINEMENT_MAX, scenes.length + uploads) }
+}
+
+/* One entry of `images`: an upload name (ComfyUI input folder, same rules as jobs.js: bare name,
+   no leading dot, an image that exists) or the id of a library photo. */
+function resoudreImage(entree) {
+  const e = typeof entree === 'string' ? entree.trim() : ''
+  if (!e || e.length > 160 || e.includes('\0')) throw new Error('photo invalide')
+  if (IMAGE.test(e)) {
+    if (/[\\/]/.test(e) || e.startsWith('.') || path.basename(e) !== e) throw new Error(`nom de photo invalide : ${nettoie(e, 40)}`)
+    const chemin = path.join(CONFIG.comfyInput, e)
+    let ok = false
+    try { ok = fs.statSync(chemin).isFile() } catch { /* missing */ }
+    if (!ok || !store.estInputStudio(e)) throw new Error(`photo introuvable : ${nettoie(e, 40)}`)
+    return { cle: e, nom: e, chemin }
+  }
+  const a = store.getAsset(e)
+  if (!a || a.media_type !== 'photo') throw new Error(`photo introuvable : ${nettoie(e, 40)}`)
+  const chemin = path.join(CONFIG.mediaDir, path.basename(a.filename ?? a.uri))
+  if (!IMAGE.test(chemin) || !fs.existsSync(chemin)) throw new Error(`photo introuvable : ${nettoie(e, 40)}`)
+  // a library photo reaches the renders as a copy in the input folder
+  return { cle: `asset:${a.id}`, nom: `CDI_${String(a.id).replace(/[^\w-]/g, '_').slice(0, 60)}${path.extname(chemin).toLowerCase()}`, chemin, copie: true }
+}
+
+/** Creates a character from 1 to 12 imported photos. `images`: upload names or library photo ids;
+ *  `profil`: index into `images` or the entry itself (default: the first). `adulte` must be true:
+ *  the person is an adult and agreed. `traits` is optional (age 21-80 required if given). Such a
+ *  character is never marked fictitious: SFW only, adult mode stays locked (see fictif.js). */
+export function creerDepuisImages({ images, profil, nom, traits, adulte, entrainer, moteurs }) {
+  if (adulte !== true) throw new Error('confirme que la personne est majeure et a donné son accord')
+  const aEntrainer = moteursChoisis(moteurs, entrainer)
+  const n = nomValide(nom)
+  if (!Array.isArray(images) || !images.length) throw new Error(`importe de 1 à ${IMAGES_MAX} photos`)
+  if (images.length > IMAGES_MAX) throw new Error(`importe de 1 à ${IMAGES_MAX} photos`)
+  const lues = images.map(resoudreImage)
+  let i = profil === undefined || profil === null || profil === '' ? 0 : Number.isInteger(profil) ? profil : images.indexOf(profil)
+  if (i < 0 || i >= lues.length) throw new Error('choisis la photo de profil parmi les photos importées')
+  // the same photo twice counts once, the profile photo wins its place
+  const uniques = []
+  for (const l of [lues[i], ...lues.filter((_, k) => k !== i)]) if (!uniques.some(u => u.cle === l.cle || u.chemin === l.chemin)) uniques.push(l)
+  const x = traits && typeof traits === 'object' && Object.keys(traits).length ? lireTraits(traits) : null
+  const plan = planDepuisImages(uniques.length)
+  const [pro, ...autres] = uniques
+  const refs = autres.slice(0, plan.references)
+  for (const r of refs) if (r.copie) { fs.copyFileSync(r.chemin, path.join(CONFIG.comfyInput, r.nom)); store.noterInput(r.nom, 'upload') }
+  return lancerCreation({ nom: n, x, src: pro.chemin, ancrageY: 0.15, fictif: false, scenes: plan.scenes, aEntrainer,
+    refs: refs.map(r => r.nom), extras: plan.uploadsEntrainement ? uniques.map(u => u.chemin) : [],
+    description: `${n} : personnage créé à partir de photos importées${x ? `, ${description(x)}` : ''}`,
+    credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage créé à partir de photos importées (personne majeure, accord confirmé par le propriétaire)' } })
 }
 
 export function etatCreation(id) {
@@ -93,7 +184,9 @@ setInterval(() => {
     if (!c.entrainer || c.entrainement || c.entrainements?.length) continue
     const etats = c.images.map(j => store.getJob(j)?.status)
     if (etats.some(s => s !== 'done' && s !== 'blocked')) continue
-    const fichiers = c.images.flatMap(j => store.assetsOfJob(j).filter(a => !String(a.id).endsWith('-full')).map(a => path.join(CONFIG.mediaDir, path.basename(a.filename))))
+    const generes = c.images.flatMap(j => store.assetsOfJob(j).filter(a => !String(a.id).endsWith('-full')).map(a => path.join(CONFIG.mediaDir, path.basename(a.filename))))
+    // LOCAL FORK PATCH: imported photos join the generated images (creerDepuisImages)
+    const fichiers = [...generes, ...(c.extras ?? []).filter(f => fs.existsSync(f))].slice(0, ENTRAINEMENT_MAX)
     try { c.entrainements = (c.moteurs?.length ? c.moteurs : ['klein']).map(moteur => ({ moteur, job: enqueueEntrainement({ personaId: c.personaId, images: fichiers, declencheur: c.declencheur, pas: 1200, moteur }).id })) }
     catch (e) { c.entrainer = false; console.warn(`[création ${c.id}] entraînement : ${e.message || e}`) }
     garder()

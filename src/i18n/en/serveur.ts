@@ -4,6 +4,13 @@
    Key = exact message returned by the server. */
 export const serveur: Record<string, string> = {
   // index.js — rejected requests
+  // createurPersonnage.js — character from imported photos (LOCAL FORK PATCH)
+  'confirme que la personne est majeure et a donné son accord': 'confirm the person is an adult and has agreed',
+  'importe de 1 à 12 photos': 'import 1 to 12 photos',
+  'photo invalide': 'invalid photo',
+  'choisis la photo de profil parmi les photos importées': 'pick the profile photo among the imported photos',
+  'photo illisible : choisis une autre image': 'unreadable photo: pick another image',
+  'donne un nom au personnage': 'give the character a name',
   'absent de la corbeille': 'not in the Trash',
   'asset inconnu': 'unknown asset',
   'asset sans fichier sur disque': 'asset has no file on disk',
@@ -140,6 +147,8 @@ type Tr = (s: string) => string
 /** Messages with variables: French pattern → English. `tr` translates a fragment
  *  (nested message, hint after "—"). The first matching pattern wins. */
 export const MOTIFS_SERVEUR: [RegExp, (m: RegExpMatchArray, tr: Tr) => string][] = [
+  [/^photo introuvable : ([\s\S]+)$/, m => `photo not found: ${m[1]}`],
+  [/^nom de photo invalide : ([\s\S]+)$/, m => `invalid photo name: ${m[1]}`],
   [/^« (.+) » existe déjà$/, m => `“${m[1]}” already exists`],
   [/^« (.+) » absent du dossier input\/$/, m => `“${m[1]}” not found in the input/ folder`],
   [/^job « (.+) » : encore en cours$/, m => `job “${m[1]}”: still running`],

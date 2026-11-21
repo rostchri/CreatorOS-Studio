@@ -4386,7 +4386,9 @@ function visageDuPersonnage(job, g, applied) {
   fs.copyFileSync(photo, path.join(CONFIG.comfyInput, nom))
   let n = g[Object.values(g).find(x => x.class_type === 'KSampler')?.inputs.positive?.[0]]
   while (n && n.class_type !== 'CLIPTextEncode') n = g[Object.values(n.inputs).find(v => Array.isArray(v))?.[0]]
-  if (n) n.inputs.text = `The woman in the first reference image is ${p.name?.replace(/\s*\(.*\)\s*/g, '') || 'the main character'}: keep her face exactly. ${n.inputs.text}`
+  // LOCAL FORK PATCH: the wording follows the character (a man, a woman, or a person) instead of always "woman"
+  const [qui, poss] = /\b(woman|female|girl)\b/i.test(p.preamble ?? '') ? ['woman', 'her'] : /\b(man|male|boy)\b/i.test(p.preamble ?? '') ? ['man', 'his'] : ['person', 'their']
+  if (n) n.inputs.text = `The ${qui} in the first reference image is ${p.name?.replace(/\s*\(.*\)\s*/g, '') || 'the main character'}: keep ${poss} face exactly. ${n.inputs.text}`
   applied.push(`photo de profil de ${p.name || id} en première référence (visage)`)
   return [nom]
 }
