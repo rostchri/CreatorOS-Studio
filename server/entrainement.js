@@ -45,8 +45,21 @@ const SUR_MAC = estApple()
      encoder on the card next to the quantized transformer, and that is where it OOMed here
      (23.26 of 23.98 GiB). Without the key the encoder still costs memory, but less of it.
    Also not carried over: use_uint4_cache (it writes next to the model, and the training view of
-   the models is read-only here), so every run quantizes again — 12 s measured for both models. */
+   the models is read-only here), so every run quantizes again — 12 s measured for both models.
+   - MIOpen off (torch.backends.cudnn.enabled = False, set by LANCEUR_AMD before run.py). The VAE
+     encode that fills the latent cache goes through MIOpen convolutions, and on gfx1100 those are
+     not deterministic: the same image encodes to different latents on every call, sometimes NaN or
+     garbage (kanban tf-mwqowqjq-bnxr: one cached latent at absmax 126464 instead of ~5, the LoRA
+     went NaN on step 2 and the run died at 51/1200). With MIOpen off torch uses its own convolution
+     kernels: 6 images x 4 encodes came out identical and finite. The transformer has no
+     convolutions, so training itself is unaffected. */
 const SUR_AMD = estAmd()
+const LANCEUR_AMD = "import runpy, sys, torch; torch.backends.cudnn.enabled = False; sys.argv = ['run.py', *sys.argv[1:]]; runpy.run_path('run.py', run_name='__main__')"
+/* ai-toolkit replaces a non-finite loss by zero and keeps going: once the LoRA weights are NaN
+   every following step is "loss is nan", the run burns its whole budget and ends on an unrelated
+   error (or writes a NaN LoRA). That many NaN steps in a row, with no finite loss in between,
+   stops it with a clear message instead. A stray NaN step (ai-toolkit's own guard) stays harmless. */
+const NAN_SUITE_MAX = 10
 /* Resolution buckets and LoRA rank, overridable so a host can cap what its card can hold (on
    24 GB: CREATOROS_ENTRAINEMENT_RESOLUTION=512,768) without a fork. Defaults are upstream. */
 const RESOLUTION = (process.env.CREATOROS_ENTRAINEMENT_RESOLUTION || '512, 768, 1024')
@@ -205,21 +218,34 @@ export function arreterEntrainement(id) {
 export function entrainer({ id, config, sortie, pas, moteur }, progres) {
   return new Promise((ok, ko) => {
     const env = { ...process.env, PYTHONUNBUFFERED: '1', ...(SUR_MAC ? { PYTORCH_ENABLE_MPS_FALLBACK: '1' } : {}) }
-    const p = spawn(pythonAiToolkit(moteur), ['run.py', config], { cwd: dossierAiToolkit(moteur), env, detached: true })
+    const args = SUR_AMD ? ['-c', LANCEUR_AMD, config] : ['run.py', config]
+    const p = spawn(pythonAiToolkit(moteur), args, { cwd: dossierAiToolkit(moteur), env, detached: true })
     if (id) processus.set(id, p)
     // full ai-toolkit output next to the config: a failed run otherwise only reports its exit code
     const journal = fs.createWriteStream(path.join(path.dirname(config), 'ai-toolkit.log'), { flags: 'a' })
     p.on('close', () => journal.end())
     let reste = ''
+    let nanSuite = 0, nanArret = false
     const lire = b => {
       journal.write(b)
       const t = reste + b.toString(); const l = t.split(/[\r\n]/); reste = l.pop() ?? ''
-      for (const x of l) { const m = /(\d+)\/(\d+) \[/.exec(x); if (m && Number(m[2]) === pas) progres(Number(m[1]), pas) }
+      for (const x of l) {
+        const m = /(\d+)\/(\d+) \[/.exec(x); if (m && Number(m[2]) === pas) progres(Number(m[1]), pas)
+        // a finite, non-zero loss on the progress bar resets the streak (a NaN step shows loss 0)
+        const perte = /loss: ([0-9.e+-]+)/.exec(x)
+        if (perte && Number(perte[1]) > 0) nanSuite = 0
+        if (/loss is nan/i.test(x) && ++nanSuite >= NAN_SUITE_MAX && !nanArret) {
+          nanArret = true
+          journal.write(`\n[studio] ${NAN_SUITE_MAX} pas de suite en NaN : entraînement arrêté\n`)
+          try { process.kill(-p.pid, 'SIGTERM') } catch { try { p.kill('SIGTERM') } catch { /* already finished */ } }
+        }
+      }
     }
     p.stdout.on('data', lire); p.stderr.on('data', lire)
     p.on('error', ko)
     p.on('close', code => {
       if (id) processus.delete(id)
+      if (nanArret) return ko(new Error('entraînement arrêté : la perte est devenue NaN (une image ou son latent est illisible), aucune LoRA produite'))
       if (code !== 0) return ko(new Error(`ai-toolkit s'est arrêté (code ${code})`))
       const f = fs.existsSync(sortie) ? fs.readdirSync(sortie).filter(x => x.endsWith('.safetensors')).sort().pop() : null
       f ? ok(path.join(sortie, f)) : ko(new Error('LoRA non produite'))
