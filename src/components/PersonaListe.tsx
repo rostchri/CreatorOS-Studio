@@ -62,6 +62,15 @@ export function PersonaListe({ onChange, onCreerDeZero }: { onChange: (actif: st
     await appel(`/api/personas/${id}/activer`, { method: 'POST' })
     await useAppStore.getState().choisirPersonnage(id)
   }
+  /* A page without a chosen character still highlights the server's active one (fallback in
+     charger), so "already active" is not enough to ignore a click: the page must also hold it,
+     otherwise the training panel and the identity fields stay on "no character" with no way out. */
+  const personaPage = useAppStore(s => s.personaId)
+  const choisir = (p: PersonaResume) => {
+    if (!p.active) void agir(() => activer(p.id))
+    else if (personaPage !== p.id) void agir(() => useAppStore.getState().choisirPersonnage(p.id))
+  }
+  const tenu = (p: PersonaResume) => p.active && personaPage === p.id
 
   async function agir(f: () => Promise<unknown>) {
     setMsg(null)
@@ -81,10 +90,10 @@ export function PersonaListe({ onChange, onCreerDeZero }: { onChange: (actif: st
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
         {liste.map(p => (
           <div key={p.id} role="button" tabIndex={0} aria-pressed={p.active}
-            onClick={() => { if (!p.active) void agir(() => activer(p.id)) }}
-            onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !p.active) void agir(() => activer(p.id)) }}
+            onClick={() => choisir(p)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') choisir(p) }}
             style={{
-              padding: '10px 12px', borderRadius: 12, cursor: p.active ? 'default' : 'pointer',
+              padding: '10px 12px', borderRadius: 12, cursor: tenu(p) ? 'default' : 'pointer',
               border: p.active ? '2px solid rgba(234,78,137,0.9)' : '1px solid rgba(127,127,127,0.30)',
               background: p.active ? 'rgba(234,78,137,0.10)' : 'rgba(127,127,127,0.06)',
               display: 'flex', alignItems: 'center', gap: 12, minWidth: 0,
