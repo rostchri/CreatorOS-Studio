@@ -65,18 +65,33 @@ const NAN_SUITE_MAX = 10
 const RESOLUTION = (process.env.CREATOROS_ENTRAINEMENT_RESOLUTION || '512, 768, 1024')
   .split(/[, ]+/).map(x => Number(x)).filter(Number.isFinite)
 const RANG = Number(process.env.CREATOROS_ENTRAINEMENT_RANK) > 0 ? Number(process.env.CREATOROS_ENTRAINEMENT_RANK) : 32
-/* AMD configurations measured end to end (Klein), keyed rank@sorted buckets. Anything else has
-   no measurement on AMD, so no number is invented for it — the estimate stays null and the UI
-   says so. All four fit the 24 GB card once expandable_segments is off (it silently corrupts
+/* AMD configurations measured end to end, per engine, keyed rank@sorted buckets. Anything else
+   has no measurement on AMD, so no number is invented for it — the estimate stays null and the UI
+   says so. All of them fit the 24 GB card once expandable_segments is off (it silently corrupts
    live tensors on gfx1100, pytorch#204212). */
 const MESURES_AMD = {
-  '16@512': { secParPas: 2.4, preparationS: 45 },
-  // Klein on gfx1100, 100 steps each, 17 images, PYTORCH_HIP_ALLOC_CONF unset: peak 15.9 / 15.5 / 19.2 GiB
-  '32@512,768': { secParPas: 3.3, preparationS: 45 },
-  '32@768': { secParPas: 4.0, preparationS: 45 },
-  '32@512,768,1024': { secParPas: 4.5, preparationS: 45 },
+  klein: {
+    '16@512': { secParPas: 2.4, preparationS: 45 },
+    // Klein on gfx1100, 100 steps each, 17 images, PYTORCH_HIP_ALLOC_CONF unset: peak 15.9 / 15.5 / 19.2 GiB
+    '32@512,768': { secParPas: 3.3, preparationS: 45 },
+    '32@768': { secParPas: 4.0, preparationS: 45 },
+    '32@512,768,1024': { secParPas: 4.5, preparationS: 45 },
+  },
+  // 100 steps, 12 images, same recipe: peak 16.2 GiB allocated, 0 NaN, 0 OOM
+  flux3: { '32@512,768,1024': { secParPas: 2.4, preparationS: 45 } },
+  // 100 steps, 12 images: peak 17.8 GiB allocated, 0 NaN, 0 OOM — only without the 1024 bucket
+  krea: { '32@512,768': { secParPas: 4.7, preparationS: 60 } },
 }
-const MESURE_AMD = SUR_AMD ? MESURES_AMD[`${RANG}@${[...RESOLUTION].sort((a, b) => a - b).join(',')}`] ?? null : null
+/* Krea 2 on 24 GB: with the 1024 bucket a third of the steps (32/100) hit an OOM that ai-toolkit
+   catches and skips — the run "succeeds" while those images never train. So on AMD its buckets are
+   capped at 768; a host setting of only larger buckets falls back to the cap itself. */
+const KREA_RESOLUTION_MAX_AMD = 768
+const bucketsSurAmd = max => {
+  if (!max) return RESOLUTION
+  const r = RESOLUTION.filter(x => x <= max)
+  return r.length ? r : [max]
+}
+const mesureAmd = (moteur, max) => SUR_AMD ? MESURES_AMD[moteur][`${RANG}@${[...bucketsSurAmd(max)].sort((a, b) => a - b).join(',')}`] ?? null : null
 const FACTEUR_DUREE = Number(process.env.CREATOROS_ENTRAINEMENT_FACTEUR) || 1
 const local = (...p) => path.join(MODELES_LOCAUX, ...p)
 const present = f => fs.existsSync(f) ? f : null
@@ -94,7 +109,7 @@ function poidsKrea2() {
 
 /** Engines the studio can train a LoRA for, with the measured duration per step (RTX 5090; `mac`:
     M5 Pro 64 GB, 5 images, buckets 512/768/1024, warm model cache; `amd`: only where an AMD run was
-    actually measured — see MESURE_AMD — and `surAmd`: whether a training through this engine ever
+    actually measured — see MESURES_AMD — `resolutionMaxAmd`: bucket cap on AMD — and `surAmd`: whether a training through this engine ever
     finished on a Radeon card). */
 export const MOTEURS_ENTRAINEMENT = {
   // local: the Qwen3-8B text encoder stays a hub id (fixed in ai-toolkit), served from the HF cache
@@ -102,15 +117,14 @@ export const MOTEURS_ENTRAINEMENT = {
     /* Measured on gfx1100 / 24 GB (see MESURES_AMD): only those bucket/rank combinations carry a
        number — setting CREATOROS_ENTRAINEMENT_RANK or _RESOLUTION to anything else drops it
        rather than extrapolating. */
-    amd: MESURE_AMD, modele: () => {
+    amd: mesureAmd('klein'), modele: () => {
     const chemin = MODELES_LOCAUX ? present(local('klein-9b', 'flux-2-klein-base-9b.safetensors')) && local('klein-9b') : 'black-forest-labs/FLUX.2-klein-base-9B'
     return chemin ? { arch: 'flux2_klein_9b', chemin } : null
   } },
-  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, mac: { secParPas: 22, preparationS: 600 },
-    /* no `surAmd` and no `amd` on purpose: never trained on a Radeon (Krea 2 brings its own
-       Qwen3-VL encoder and raw weights, so the Klein recipe is not transferable evidence).
-       Ticket tf-mwqgezhm-uo8c, step S6, is what would change this. */
-    modele: () => {
+  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, mac: { secParPas: 22, preparationS: 600 }, surAmd: true,
+    /* Trained on gfx1100 with the uint4 recipe (ticket tf-mwqgezhm-uo8c, S6), but only up to 768 px:
+       see KREA_RESOLUTION_MAX_AMD. */
+    resolutionMaxAmd: KREA_RESOLUTION_MAX_AMD, amd: mesureAmd('krea', KREA_RESOLUTION_MAX_AMD), modele: () => {
     const f = poidsKrea2()
     if (!f) return null
     if (!MODELES_LOCAUX) return { arch: 'krea2', chemin: f }
@@ -119,7 +133,9 @@ export const MOTEURS_ENTRAINEMENT = {
   } },
   /* FLUX 3 Image Klein: trained on Klein Base (FLUX Kommunity license accepted on Hugging Face), applied
      to the studio's distilled model. 5.6B parameters: fits in bf16 without quantization. */
-  flux3: { nom: 'FLUX 3 Klein', secParPas: 2, preparationS: 300, mac: { secParPas: 11.2, preparationS: 420 }, modele: () => {
+  flux3: { nom: 'FLUX 3 Klein', secParPas: 2, preparationS: 300, mac: { secParPas: 11.2, preparationS: 420 }, surAmd: true,
+    // trained on gfx1100 unquantized (only the encoder in uint4), all three buckets (tf-mwqgezhm-uo8c, S6)
+    amd: mesureAmd('flux3'), modele: () => {
     if (!MODELES_LOCAUX) return { arch: 'flux3', chemin: 'black-forest-labs/flux-3-image-klein-base', sansQuantif: true }
     const chemin = present(local('flux3-klein-base', 'model.safetensors')) && local('flux3-klein-base'), te = present(local('qwen3-vl-4b-instruct'))
     return chemin && te ? { arch: 'flux3', chemin, sansQuantif: true, kwargs: { text_encoder_path: te } } : null
@@ -172,6 +188,7 @@ export function preparerEntrainement({ id, images, declencheur, pas, moteur = 'k
        as well as quantizing. */
     ? `${SANS_QUANTIF ? 'qtype_te: uint4' : 'qtype: uint4\n        qtype_te: uint4'}\n        low_vram: true\n        layer_offloading: false`
     : SANS_QUANTIF ? 'qtype_te: qfloat8' : 'qtype: qfloat8'
+  const BUCKETS = SUR_AMD ? bucketsSurAmd(MOTEURS_ENTRAINEMENT[moteur].resolutionMaxAmd) : RESOLUTION
   const LIGNES_TRAIN = `${SUR_AMD ? '        disable_sampling: true\n' : ''}${SUR_MAC ? '        cache_text_embeddings: true\n' : ''}`
   const yaml = `job: extension
 config:
@@ -188,7 +205,7 @@ config:
           caption_ext: "txt"
           caption_dropout_rate: 0.05
           cache_latents_to_disk: true
-          resolution: [ ${RESOLUTION.join(', ')} ]
+          resolution: [ ${BUCKETS.join(', ')} ]
       train:
         batch_size: 1
         steps: ${pas}
