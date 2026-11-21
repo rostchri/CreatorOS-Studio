@@ -42,7 +42,7 @@ export function CreerPersonnageView() {
   const [avecTraits, setAvecTraits] = useState(false)
   const [envoi, setEnvoi] = useState<string | null>(null)
   const fichiers = useRef<HTMLInputElement>(null)
-  const [moteursDispo, setMoteursDispo] = useState<{ id: string; nom: string; pret: boolean; secParPas: number; preparationS: number }[]>([])
+  const [moteursDispo, setMoteursDispo] = useState<{ id: string; nom: string; pret: boolean; secParPas: number | null; preparationS: number | null }[]>([])
   const [moteurs, setMoteurs] = useState<Set<string>>(new Set(['klein']))
   useEffect(() => { void fetch('/api/entrainement').then(r => r.json()).then(d => setMoteursDispo(d.moteurs ?? [])).catch(() => {}) }, [])
   const [suivi, setSuivi] = useState<{ id: string; planche: string | null; images: string; entrainementEtat: string | null; entrainements?: { moteur: string; statut: string | null }[] } | null>(null)
@@ -110,7 +110,7 @@ export function CreerPersonnageView() {
   const choixMoteurs = moteursDispo.map(m => (
     <label key={m.id} className="flex gap-1.5 items-center" style={{ cursor: m.pret ? 'pointer' : 'not-allowed', opacity: m.pret ? 1 : 0.45 }}>
       <input type="checkbox" disabled={!m.pret} checked={m.pret && moteurs.has(m.id)} onChange={e => setMoteurs(c => { const n = new Set(c); if (e.target.checked) n.add(m.id); else n.delete(m.id); return n })} />
-      {m.nom} <span className="texte-doux">~{dureeMin(m, 1200)} min</span>
+      {m.nom} <span className="texte-doux">{dureeMin(m, 1200) === null ? t('durée inconnue') : `~${dureeMin(m, 1200)} min`}</span>
     </label>
   ))
   const lignesSuivi = suivi && <span className="texte-doux">{t('Planche : {p} · images : {i}', { p: suivi.planche ?? '…', i: suivi.images })}{suivi.entrainements?.length ? ` · ${suivi.entrainements.map(e => `LoRA ${e.moteur === 'krea' ? 'Krea 2' : 'Klein'} : ${e.statut ?? '…'}`).join(' · ')}` : suivi.entrainementEtat ? ` · ${t('LoRA : {e}', { e: suivi.entrainementEtat })}` : ''}</span>

@@ -5,8 +5,12 @@ import { t, tServeur } from '../../i18n'
 import { useAppStore } from '../../store/useAppStore'
 import { useEdition } from '../../lib/proprietaire'
 
-type Moteur = { id: string; nom: string; pret: boolean; secParPas: number; preparationS: number }
-export const dureeMin = (m: Moteur, pas: number) => Math.round((pas * m.secParPas + m.preparationS) / 60)
+type Moteur = { id: string; nom: string; pret: boolean; secParPas: number | null; preparationS: number | null }
+export const dureeMin = (m: Moteur, pas: number) => m.secParPas == null || m.preparationS == null ? null : Math.round((pas * m.secParPas + m.preparationS) / 60)
+/* secParPas/preparationS are null when this machine has no measurement for the engine (an AMD card
+   reports only what it actually ran) — the UI then says unknown instead of an invented number.
+   minOuInconnu is not exported on purpose: a second module-level export adds a fast-refresh warning. */
+const minOuInconnu = (d: number | null) => (d === null ? t('durée inconnue') : `~${d} min`)
 type Travail = { id: string; personaId: string | null; statut: string; moteur?: string; declencheur: string | null; images: number | null; pas: number | null; total: number | null
   debut: number | null; fin: number | null; resteMs: number; erreur: string | null; lora: string | null }
 const EN_COURS = ['queued', 'rendering', 'running', 'pending']
@@ -66,7 +70,7 @@ export function Entrainement() {
   const [aConfirmer, setAConfirmer] = useState<string | null>(null)
   const confirmerAnnulation = (id: string) => { if (aConfirmer === id) { setAConfirmer(null); return true } setAConfirmer(id); setTimeout(() => setAConfirmer(x => (x === id ? null : x)), 4000); return false }
   const cochables = moteurs.filter(m => m.pret)
-  const totalMin = cochables.filter(m => coches.has(m.id)).reduce((n, m) => n + dureeMin(m, pas), 0)
+  const totalMin = cochables.filter(m => coches.has(m.id)).reduce((n, m) => n + (dureeMin(m, pas) ?? 0), 0)
   useEffect(() => { void charger().catch(() => setPret(false)) }, [])
   const miens = useMemo(() => travaux.filter(w => w.personaId === s.personaId).slice(0, 3), [travaux, s.personaId])
   const actif = miens.some(w => EN_COURS.includes(w.statut))
@@ -113,14 +117,17 @@ export function Entrainement() {
         <div className="entrainement-reglages">
           <div className="flex gap-3 items-center flex-wrap">
             <span className="texte-doux">{t('LoRA pour')}</span>
-            {moteurs.map(m => (
+            {moteurs.map(m => {
+              const min = dureeMin(m, pas)
+              return (
               <label key={m.id} className="flex gap-1.5 items-center" style={{ cursor: m.pret ? 'pointer' : 'not-allowed', opacity: m.pret ? 1 : 0.45 }}
-                title={m.pret ? t('~{m} min avec ces réglages', { m: dureeMin(m, pas) }) : t('modèle de base absent sur ce studio')}>
+                title={m.pret ? (min === null ? t('durée inconnue sur cette carte') : t('~{m} min avec ces réglages', { m: min })) : t('modèle de base absent sur ce studio')}>
                 <input type="checkbox" disabled={!m.pret} checked={m.pret && coches.has(m.id)}
                   onChange={e => setCoches(c => { const n = new Set(c); if (e.target.checked) n.add(m.id); else n.delete(m.id); return n })} />
-                {m.nom} <span className="texte-doux">~{dureeMin(m, pas)} min</span>
+                {m.nom} <span className="texte-doux">{minOuInconnu(min)}</span>
               </label>
-            ))}
+              )
+            })}
             <label className="flex gap-1.5 items-center" style={{ opacity: 0.45, cursor: 'not-allowed' }} title={t('MOSS n’accepte pas de LoRA')}><input type="checkbox" disabled /> MOSS Image</label>
           </div>
           <div className="flex gap-2 items-center flex-wrap">

@@ -6,7 +6,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
 import { CONFIG } from './config.js'
-import { estApple } from './carteGraphique.js'
+import { estAmd, estApple } from './carteGraphique.js'
 
 /* One ai-toolkit per engine: FLUX 3 needs a recent version (flux3 arch), installed separately so
    the one training Klein and Krea is untouched. */
@@ -29,6 +29,33 @@ const MODELES_LOCAUX = process.env.CREATOROS_ENTRAINEMENT_MODELES || null
    (inference only). Each engine carries its own measured Apple timings (`mac`); without them the
    engine is not offered on a Mac. CREATOROS_ENTRAINEMENT_FACTEUR scales every estimate. */
 const SUR_MAC = estApple()
+/* AMD / ROCm (gfx1100 and every RDNA card without native FP8/FP4). ai-toolkit runs on cuda:0 all
+   the same — torch maps the HIP device there — but with a recipe of its own, measured on a 24 GB
+   RX 7900 XTX (kanban tf-mwqgezhm-uo8c, attempt 8: 20/20 steps, 2.2-2.4 s/step, peak 15.3 GiB,
+   LoRA written):
+   - uint4 instead of qfloat8. qfloat8 runs forward but its backward falls back through
+     optimum-quanto's qfallback to a plain matmul, which dies on HIPBLAS
+     (`HIPBLAS_STATUS_ALLOC_FAILED when calling hipblasCreate`). Not trainable on this card.
+   - low_vram: true streams one transformer block at a time onto the card while quantizing, instead
+     of moving the whole fp state dict; that is what keeps the peak at 15 GiB.
+   - plain AdamW: bitsandbytes' 8-bit kernels are not what this stack is measured with.
+   - disable_sampling: true — in-training sampling deadlocks on ROCm.
+   - layer_offloading: false — it SIGSEGVs on the first training step on Linux/HIP.
+   - NO cache_text_embeddings, unlike the Mac: caching the captions first puts the bf16 Qwen3
+     encoder on the card next to the quantized transformer, and that is where it OOMed here
+     (23.26 of 23.98 GiB). Without the key the encoder still costs memory, but less of it.
+   Also not carried over: use_uint4_cache (it writes next to the model, and the training view of
+   the models is read-only here), so every run quantizes again — 12 s measured for both models. */
+const SUR_AMD = estAmd()
+/* Resolution buckets and LoRA rank, overridable so a host can cap what its card can hold (on
+   24 GB: CREATOROS_ENTRAINEMENT_RESOLUTION=512,768) without a fork. Defaults are upstream. */
+const RESOLUTION = (process.env.CREATOROS_ENTRAINEMENT_RESOLUTION || '512, 768, 1024')
+  .split(/[, ]+/).map(x => Number(x)).filter(Number.isFinite)
+const RANG = Number(process.env.CREATOROS_ENTRAINEMENT_RANK) > 0 ? Number(process.env.CREATOROS_ENTRAINEMENT_RANK) : 32
+/* The one AMD configuration that was measured end to end: rank 16 on a single 512 bucket, Klein.
+   Anything else (the fork default above: rank 32, three buckets) has no measurement on AMD, so no
+   number is invented for it — the estimate stays null and the UI says so. */
+const MESURE_AMD = SUR_AMD && RANG === 16 && RESOLUTION.length === 1 && RESOLUTION[0] === 512
 const FACTEUR_DUREE = Number(process.env.CREATOROS_ENTRAINEMENT_FACTEUR) || 1
 const local = (...p) => path.join(MODELES_LOCAUX, ...p)
 const present = f => fs.existsSync(f) ? f : null
@@ -45,14 +72,25 @@ function poidsKrea2() {
 }
 
 /** Engines the studio can train a LoRA for, with the measured duration per step (RTX 5090; `mac`:
-    M5 Pro 64 GB, 5 images, buckets 512/768/1024, warm model cache). */
+    M5 Pro 64 GB, 5 images, buckets 512/768/1024, warm model cache; `amd`: only where an AMD run was
+    actually measured — see MESURE_AMD — and `surAmd`: whether a training through this engine ever
+    finished on a Radeon card). */
 export const MOTEURS_ENTRAINEMENT = {
   // local: the Qwen3-8B text encoder stays a hub id (fixed in ai-toolkit), served from the HF cache
-  klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, mac: { secParPas: 23, preparationS: 300 }, modele: () => {
+  klein: { nom: 'FLUX.2 Klein', secParPas: 1.5, preparationS: 180, mac: { secParPas: 23, preparationS: 300 }, surAmd: true,
+    /* Measured on gfx1100 / 24 GB: 2,2-2,4 s/step over 20 steps, both models quantized in 45 s
+       (12 s warm). Only that bucket/rank combination — hence the MESURE_AMD guard: capping
+       CREATOROS_ENTRAINEMENT_RANK or _RESOLUTION away from the measured recipe drops the number
+       rather than extrapolating it. */
+    amd: MESURE_AMD ? { secParPas: 2.4, preparationS: 45 } : null, modele: () => {
     const chemin = MODELES_LOCAUX ? present(local('klein-9b', 'flux-2-klein-base-9b.safetensors')) && local('klein-9b') : 'black-forest-labs/FLUX.2-klein-base-9B'
     return chemin ? { arch: 'flux2_klein_9b', chemin } : null
   } },
-  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, mac: { secParPas: 22, preparationS: 600 }, modele: () => {
+  krea: { nom: 'Krea 2', secParPas: 2.7, preparationS: 240, mac: { secParPas: 22, preparationS: 600 },
+    /* no `surAmd` and no `amd` on purpose: never trained on a Radeon (Krea 2 brings its own
+       Qwen3-VL encoder and raw weights, so the Klein recipe is not transferable evidence).
+       Ticket tf-mwqgezhm-uo8c, step S6, is what would change this. */
+    modele: () => {
     const f = poidsKrea2()
     if (!f) return null
     if (!MODELES_LOCAUX) return { arch: 'krea2', chemin: f }
@@ -67,13 +105,25 @@ export const MOTEURS_ENTRAINEMENT = {
     return chemin && te ? { arch: 'flux3', chemin, sansQuantif: true, kwargs: { text_encoder_path: te } } : null
   } },
 }
-export const moteurEntrainementPret = m => !!MOTEURS_ENTRAINEMENT[m] && (!SUR_MAC || !!MOTEURS_ENTRAINEMENT[m].mac) && aiToolkitPret(m) && !!MOTEURS_ENTRAINEMENT[m].modele()
-/** Timings of an engine on this machine (Apple values on a Mac), scaled by FACTEUR_DUREE. */
+/* Trainability on this machine, following the Mac's rule that an engine without a number is not
+   offered — with one difference, because on AMD the recipe belongs to the card and not to the
+   engine: here `surAmd` records whether a training through this engine ever finished on a Radeon,
+   and the `amd` timings only ever carry a measured number. So an engine that runs on AMD but was
+   not measured (the fork default: rank 32 on three buckets) is still offered and says "unknown",
+   instead of the Mac's "base model missing" — which would be a lie about the model, and would make
+   the host's resolution cap switch the engine off entirely. */
+const pretSurCarte = m => SUR_MAC ? !!m.mac : SUR_AMD ? m.surAmd === true : true
+export const moteurEntrainementPret = m => !!MOTEURS_ENTRAINEMENT[m] && pretSurCarte(MOTEURS_ENTRAINEMENT[m]) && aiToolkitPret(m) && !!MOTEURS_ENTRAINEMENT[m].modele()
+/** Timings of an engine on this machine (Apple values on a Mac, the measured AMD run on Radeon),
+    scaled by FACTEUR_DUREE. Null when the machine has no measurement for that engine — a duration
+    is never invented; the UI then says it is unknown. */
 export const tempsEntrainement = moteur => {
-  const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein, t = SUR_MAC && m.mac ? m.mac : m
+  const m = MOTEURS_ENTRAINEMENT[moteur] ?? MOTEURS_ENTRAINEMENT.klein
+  if (SUR_AMD) return m.amd ? { secParPas: m.amd.secParPas * FACTEUR_DUREE, preparationS: m.amd.preparationS * FACTEUR_DUREE } : { secParPas: null, preparationS: null }
+  const t = (SUR_MAC && m.mac) ? m.mac : m
   return { secParPas: t.secParPas * FACTEUR_DUREE, preparationS: t.preparationS * FACTEUR_DUREE }
 }
-export const dureeEstimeeMs = (moteur, pas) => { const t = tempsEntrainement(moteur); return Math.round((pas * t.secParPas + t.preparationS) * 1000) }
+export const dureeEstimeeMs = (moteur, pas) => { const t = tempsEntrainement(moteur); return t.secParPas == null ? null : Math.round((pas * t.secParPas + t.preparationS) * 1000) }
 
 const pythonAiToolkit = (moteur) => [path.join(dossierAiToolkit(moteur), 'venv', 'bin', 'python'), path.join(dossierAiToolkit(moteur), '.venv', 'bin', 'python')].find(f => fs.existsSync(f)) ?? 'python3'
 
@@ -91,6 +141,18 @@ export function preparerEntrainement({ id, images, declencheur, pas, moteur = 'k
     const l = Array.isArray(legendes) && typeof legendes[i] === 'string' && legendes[i].trim() ? legendes[i].trim().slice(0, 600) : null
     fs.writeFileSync(path.join(ds, `${String(i).padStart(3, '0')}.txt`), l ? (l.toLowerCase().includes(declencheur) ? l : `${declencheur}, ${l}`) : `${declencheur}, photo of ${declencheur}`)
   })
+  /* One line per platform, so the CUDA and Mac output stays exactly what it was: only the AMD card
+     changes the optimizer, adds the sampling guard and replaces the quantization recipe. */
+  const OPTIMISEUR = SUR_MAC || SUR_AMD ? 'adamw' : 'adamw8bit'
+  const SANS_QUANTIF = modele.sansQuantif || SUR_MAC
+  const LIGNES_POIDS = SUR_AMD
+    /* uint4 on both sides (gfx1100 has no FP8/FP4), low_vram for the blockwise quantization stream,
+       layer_offloading explicitely off — see the note on SUR_AMD above. An unquantized transformer
+       (flux3) only gets the encoder's qtype, as on the Mac; low_vram stays on, it offloads loading
+       as well as quantizing. */
+    ? `${SANS_QUANTIF ? 'qtype_te: uint4' : 'qtype: uint4\n        qtype_te: uint4'}\n        low_vram: true\n        layer_offloading: false`
+    : SANS_QUANTIF ? 'qtype_te: qfloat8' : 'qtype: qfloat8'
+  const LIGNES_TRAIN = `${SUR_AMD ? '        disable_sampling: true\n' : ''}${SUR_MAC ? '        cache_text_embeddings: true\n' : ''}`
   const yaml = `job: extension
 config:
   name: "${id}"
@@ -99,14 +161,14 @@ config:
       training_folder: "${path.join(racine, 'sortie')}"
       device: ${SUR_MAC ? 'mps' : 'cuda:0'}
       trigger_word: "${declencheur}"
-      network: { type: "lora", linear: 32, linear_alpha: 32 }
+      network: { type: "lora", linear: ${RANG}, linear_alpha: ${RANG} }
       save: { dtype: float16, save_every: ${pas}, max_step_saves_to_keep: 1, push_to_hub: false }
       datasets:
         - folder_path: "${ds}"
           caption_ext: "txt"
           caption_dropout_rate: 0.05
           cache_latents_to_disk: true
-          resolution: [ 512, 768, 1024 ]
+          resolution: [ ${RESOLUTION.join(', ')} ]
       train:
         batch_size: 1
         steps: ${pas}
@@ -116,15 +178,15 @@ config:
         gradient_checkpointing: true
         noise_scheduler: "flowmatch"
         timestep_type: weighted
-        optimizer: "${SUR_MAC ? 'adamw' : 'adamw8bit'}"
-${SUR_MAC ? '        cache_text_embeddings: true\n' : ''}        lr: 1e-4
+        optimizer: "${OPTIMISEUR}"
+${LIGNES_TRAIN}        lr: 1e-4
         dtype: bf16
       model:
         arch: ${modele.arch}
         name_or_path: "${modele.chemin}"
-        quantize: ${modele.sansQuantif || SUR_MAC ? 'false' : 'true'}
+        quantize: ${SANS_QUANTIF ? 'false' : 'true'}
         quantize_te: true
-        ${modele.sansQuantif || SUR_MAC ? 'qtype_te: qfloat8' : 'qtype: qfloat8'}
+        ${LIGNES_POIDS}
 ${modele.kwargs ? `        model_kwargs:\n${Object.entries(modele.kwargs).map(([k, v]) => `          ${k}: "${v}"`).join('\n')}\n` : ''}`
   const f = path.join(racine, 'config.yaml')
   fs.writeFileSync(f, yaml)

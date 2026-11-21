@@ -807,6 +807,8 @@ export const nouveautes: Record<string, string> = {
   'Clique encore sur Annuler pour arrêter cet entraînement (le travail fait est perdu).': 'Click Cancel again to stop this training (the work done is lost).',
   'LoRA pour': 'LoRA for',
   '~{m} min avec ces réglages': '~{m} min with these settings',
+  'durée inconnue': 'duration unknown',
+  'durée inconnue sur cette carte': 'duration unknown on this card',
   'modèle de base absent sur ce studio': 'base model missing on this studio',
   'MOSS n’accepte pas de LoRA': 'MOSS does not accept LoRAs',
   'entraîner sa LoRA pour': 'train its LoRA for',

@@ -284,6 +284,8 @@ All settings are environment variables; the setup wizard writes the usual ones t
 | `CREATOROS_VOIX_PYTHON` | `$CREATOROS_DATA/voix-venv/bin/python` | Python with `kokoro` installed, for voice-over and dubbing voices |
 | `CREATOROS_AI_TOOLKIT` | `~/ai-toolkit` | ai-toolkit folder, for character training |
 | `CREATOROS_AI_TOOLKIT_FLUX3` | `~/ai-toolkit-flux3` | a recent ai-toolkit (with `arch: flux3`), for FLUX 3 Klein character LoRAs |
+| `CREATOROS_ENTRAINEMENT_RESOLUTION` | `512, 768, 1024` | resolution buckets of a LoRA training, as a comma-separated list; a 24 GB card can cap it to `512,768` or `512` |
+| `CREATOROS_ENTRAINEMENT_RANK` | `32` | LoRA rank (and alpha) of a character training; 16 is what was measured on AMD |
 | `CREATOROS_NOTIF_URL` | unset | [ntfy](https://ntfy.sh) topic URL: the owner is notified when an Internet visitor starts a render, and when one fails or is refused |
 
 ### Optional extras
@@ -366,6 +368,7 @@ What changes on these machines:
 
   The setup wizard prints the same verdict per feature ("fits", "tight", "likely too big") before downloading anything.
 - **Starting ComfyUI.** Without `--use-sage-attention` (SageAttention is CUDA only). On a Mac, start it with `PYTORCH_ENABLE_MPS_FALLBACK=1` so an operation Metal does not implement falls back to the CPU instead of stopping the render.
+- **Character LoRA training on AMD.** The studio writes an ai-toolkit recipe of its own for a Radeon, because the NVIDIA one does not run there. `qfloat8` is out: it quantizes fine and its forward pass runs, but the backward falls back through optimum-quanto's `qfallback` to a plain matmul, which dies on HIPBLAS (`HIPBLAS_STATUS_ALLOC_FAILED when calling hipblasCreate`) — RDNA3 has no native FP8/FP4. AMD therefore trains in **uint4** with `low_vram: true` (blocks are streamed onto the card one at a time while quantizing), plain **AdamW**, `disable_sampling: true` (in-training sampling deadlocks on ROCm) and `layer_offloading: false` (SIGSEGV on the first step under Linux/HIP). `cache_text_embeddings` is deliberately **not** set, unlike on the Mac: caching the captions first parks the bf16 Qwen3 encoder on the card next to the quantized transformer, which OOMed at 23.26 of 23.98 GiB. Measured end to end on a 24 GB RX 7900 XTX (gfx1100), FLUX.2 Klein 9B, rank 16, single 512 bucket: 20/20 steps, 2.2–2.4 s per step, loss 1.223 → 0.645, VRAM peak 15.3 GiB, LoRA written; quantizing both models takes 12 s warm (45 s cold, so that is the figure shown). Only that configuration carries a measured duration: with the fork default (rank 32 on three buckets, never run on AMD) the studio offers the engine but says the duration is unknown rather than guessing. `use_uint4_cache` is not used either — it writes next to the model, and the training view of the models is read-only on this setup.
 - **Not available without CUDA:** MiniMax H3 (nvfp4 text encoder), so also the Long Take page and the H3 talking avatar, and the SCAIL 2 swap (int8 only, no bf16 release yet). Character LoRA training and the third-party node packs (SAM 3, SeedVR2, RIFE, MoGe-2) have not been tried on Metal.
 
 One studio drives one GPU. With two AMD cards, run two ComfyUI instances (`HIP_VISIBLE_DEVICES=0` and `=1`) and point one studio at each (`COMFY_URL`).
