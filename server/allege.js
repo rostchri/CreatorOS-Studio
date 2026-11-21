@@ -73,10 +73,19 @@ export const profilDuJob = new AsyncLocalStorage()
 
 /** Active profile: the job's if it forces one, else CREATOROS_VRAM, else the card seen by ComfyUI (re-read every 10 min). */
 export async function profilActuel() {
+  /* The card is read even when the profile is forced: without CUDA, choixSansCuda needs its
+     memory size. With vram = 0 the 85 % check is skipped and the most faithful file wins
+     (LTX Q8_0, 22.8 GB, on a 24 GB card). */
+  await lireCarte()
   const duJob = profilDuJob.getStore()
   if (PROFILS.includes(duJob)) return { profil: duJob, source: 'job', vram: carte.vram }
   const force = Number(process.env.CREATOROS_VRAM)
   if (PROFILS.includes(force)) return { profil: force, source: 'CREATOROS_VRAM', vram: carte.vram }
+  return { profil: carte.profil ?? 24, source: 'carte', vram: carte.vram }
+}
+
+/** Card seen by ComfyUI (re-read every 10 min). */
+async function lireCarte() {
   if (Date.now() - carte.at > 600_000) {
     try {
       const d = (await comfyJson('/system_stats', 5000))?.devices?.[0]
@@ -85,7 +94,6 @@ export async function profilActuel() {
       carte = { at: Date.now(), vram, profil: profilDe(vram) }
     } catch { carte = { ...carte, at: Date.now() - 540_000 } }  // ComfyUI unreachable: retry in a minute
   }
-  return { profil: carte.profil ?? 24, source: 'carte', vram: carte.vram }
 }
 
 /** Files ComfyUI sees for a loader (re-read every 2 min). */
@@ -127,7 +135,9 @@ export async function alleger(graphe) {
   /* Without CUDA first: the bf16 or GGUF replacement, if installed (otherwise the original file
      stays and ComfyUI reports that it cannot load it). */
   if (horsCuda) {
-    const { vram } = await profilActuel()
+    /* Card unknown (ComfyUI busy rendering does not answer /system_stats): the profile stands in
+       for the memory, otherwise vram = 0 disables the 85 % check. */
+    const vram = (await profilActuel()).vram || profil * 2 ** 30
     for (const n of Object.values(out)) {
       if (!(n?.class_type in ENTREE)) continue
       const nom = n.inputs?.[ENTREE[n.class_type]]
