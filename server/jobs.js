@@ -2,6 +2,7 @@
    Jobs run in arrival order; state lives in SQLite (not memory), so a
    restart loses nothing already produced. */
 import { PROFILS, profilDuJob } from './allege.js'
+import { capVideoAuxNormes, profilWanDemande, recetteWanPour, WAN_DUREE_AMD } from './profilWan.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -195,6 +196,11 @@ export const RENDER_RATES = {
   videoSecPerSec: { wan: 150, ltx: 9, ltx_hq: 34, minimax: 105 },
   draftSecPerSec: { minimax: 27, wan: 75, ltx_hq: 17 },
   motionSecPerFrame: { final: 9.0, preview: 4.5 },
+  /* Measured on amdgpu-01 (RX 7900 XTX, ROCm), WAN profile `amd`: 1005 s for a
+     5,06 s clip at 480×832/81 images, cold model load included → ≈199 s per
+     generated second. Only a fallback: as soon as this recipe has finished
+     renders, `measuredEstimate` takes over, recipe by recipe. */
+  wanAmdSecPerSec: 199,
 }
 
 /** Duration and frame count of a driver as the motion chain will see them.
@@ -261,9 +267,14 @@ export function estimateMs(row) {
     if (!m) return null
     return Math.round(m.frames * RENDER_RATES.motionSecPerFrame[row.motionPreview ? 'preview' : 'final'] * 1000)
   }
-  const rate = row.videoDraft
-    ? (RENDER_RATES.draftSecPerSec[row.videoEngine] ?? RENDER_RATES.videoSecPerSec[row.videoEngine] / 3)
-    : RENDER_RATES.videoSecPerSec[row.videoEngine]
+  const rate = row.videoEngine === 'wan' && row.wanProfil === 'amd'
+    /* The AMD profile has its own measured rate. Draft mode is accepted but buys
+       nothing here: the ceilings already render at draft area (≈0,4 MP), so only
+       the step count drops while the cold model load, half of the run, stays. */
+    ? RENDER_RATES.wanAmdSecPerSec
+    : row.videoDraft
+      ? (RENDER_RATES.draftSecPerSec[row.videoEngine] ?? RENDER_RATES.videoSecPerSec[row.videoEngine] / 3)
+      : RENDER_RATES.videoSecPerSec[row.videoEngine]
   return Number.isFinite(rate) && row.videoSeconds ? Math.round(rate * row.videoSeconds * 1000) : null
 }
 
@@ -408,8 +419,11 @@ const clampDuration = (v, engine) => {
 }
 
 /** Frame rate of the delivered FILE. Does not change generation: engines animate
- *  at their native rate, and a higher value duplicates frames on export. */
-const clampFps = v => ([24, 30].includes(Number(v)) ? Number(v) : 24)
+ *  at their native rate, and a higher value duplicates frames on export.
+ *  16 is accepted because the WAN AMD profile delivers at the model's native
+ *  cadence: conforming that file to 24 would DUPLICATE frames (a judder, not
+ *  motion) and re-encode a clip that is already right. */
+const clampFps = v => ([16, 24, 30].includes(Number(v)) ? Number(v) : 24)
 
 
 /* Retired recipes: kept in the table so an archived job naming them in its
@@ -585,8 +599,34 @@ function nouvelIdJob() {
   return String(n)
 }
 
+/* ============================================================
+   WAN profile (AMD) — two ways to run the SAME i2v shot.
+
+     `amd`       twin recipe PROD_video_wan-rocm.json: UnetLoaderGGUF with the
+                 quantstack Q5_K_S parts (≈9 GiB each) + the measured ceilings
+                 (480×832, 81 images, 16 fps). Measured ≈17 min on amdgpu-01.
+     `original`  the recipe as shipped: fp8_scaled weights, the dimensions and
+                 the length the console asks for. Measured on the same card at
+                 704×1248/121: VAE encode alone ≈27 min and ≈1000 s/step — that
+                 is over 3 h for one clip, which is why it is not the AMD
+                 default. The choice stays the operator's: nothing is blocked.
+
+   The default is per hardware (estAmd()), CREATOROS_WAN_PROFIL=amd|original
+   pins it, and every job may say otherwise in its payload (`wanProfil`).
+   See server/profilWan.js for the measurements. */
+export function wanProfilPour(job = {}) {
+  if (job.videoEngine !== 'wan') return undefined
+  return profilWanDemande(job.wanProfil)
+}
+
 export function enqueue(job) {
   if (job.mode === 'photo' && Array.isArray(job.references) && job.references.length) job = { ...job, photoEngine: 'klein', workflowFile: undefined }   // only the Klein recipe accepts references
+  /* WAN profile resolved ONCE here: the recipe file, the ceilings and the
+     estimate all read job.wanProfil afterwards. Motion Control is another
+     chain (Wan-Animate), so only the plain i2v Wan engine is profiled. */
+  if (job.mode === 'video' && !(typeof job.motionDriver === 'string' && job.motionDriver.trim())
+      && (job.videoEngine ?? DEFAULT_VIDEO_ENGINE) === 'wan')
+    job = { ...job, wanProfil: wanProfilPour(job) }
   /* Submission idempotency: if the client's key ALREADY produced a job, return
      that one instead of creating a second. The mobile client generates the key
      before its first POST and reuses it on every transport retry. Uniqueness is
@@ -628,6 +668,22 @@ export function enqueue(job) {
     throw new Error(`moteur vidéo « ${engineKey} » inconnu : `
       + Object.keys(VIDEO_ENGINES).join(', '))
   const engine = engineKey ? VIDEO_ENGINES[engineKey] : null
+  /* ---------- WAN profile (AMD) ----------
+     `amd` (the default on a ROCm machine): twin recipe with the Q5_K_S GGUF
+     parts, and the REQUEST brought down to what was measured (see
+     server/profilWan.js). Capping the duration here rather than the graph keeps
+     the estimate, the frame count and the delivered clip in agreement — the
+     recipe animates at 16 fps, so 5 s requested is 81 images, the measured
+     ceiling exactly. A longer shot is not refused: it is shortened, and the
+     provenance says so.
+     The ctx (context-window) recipe never applies to this profile: 5 s stays in
+     direct mode, and its 289 frames would not fit 24 GB on ROCm anyway. */
+  const wanAmd = mode === 'video' && engineKey === 'wan' && job.wanProfil === 'amd'
+  if (wanAmd) {
+    // Ceiling and native cadence of the measured profile (see the comment above).
+    if (Number(job.videoSeconds) > WAN_DUREE_AMD) job.videoSeconds = WAN_DUREE_AMD
+    job.videoFps = 16
+  }
   if (engine?.optionnel === 'h3' && !h3Disponible) throw new Error(demoPublique() ? H3_MESSAGE_DEMO : 'MiniMax H3 n’est pas installé sur ce studio : Paramètres > Modèles optionnels')
   // Wan has no audio stage: requesting audio on it is ignored (the UI disables
   // the checkbox, but the API is open).
@@ -639,6 +695,11 @@ export function enqueue(job) {
           ? engine.fileCtx : engine.file)
       : op === 'edit' ? EDIT_WORKFLOW : (RECIPES_PAR_MOTEUR[job.photoEngine]?.sfw ?? RECIPES.sfw))
     || CONFIG.defaultWorkflow
+  /* The AMD profile serves its own twin of the recipe (weights and settings),
+     whether the file came from the engine table or from the console. Carried in
+     the row: the provenance, the queue grouping and the measured history then
+     all name the recipe that will ACTUALLY run. */
+  const recetteServie = recetteWanPour(workflowFile, { videoEngine: engineKey, wanProfil: job.wanProfil })
   const positive = (job.composedPositive || job.userPrompt || '').trim()
   const sourceImage = typeof job.sourceImage === 'string' ? job.sourceImage.trim() : ''
 
@@ -711,8 +772,11 @@ export function enqueue(job) {
     id, createdAt: job.createdAt ?? Date.now(), status: 'queued',
     personaId: personaDuDepot(job.personaId), register: 'sfw',
     mode: job.mode ?? 'photo', purpose: job.purpose ?? 'creative',
-    recipeId: job.recipeId ?? null, workflowFile, seed, op, sourceImage: (job.t2v === true && mode === 'video') ? null : sourceImage || null,
+    recipeId: job.recipeId ?? null, workflowFile: recetteServie, seed, op, sourceImage: (job.t2v === true && mode === 'video') ? null : sourceImage || null,
     videoEngine: isMotion ? 'motion' : engineKey, withAudio,
+    /* WAN profile carried by the job (see the comment above the workflowFile):
+       the provenance and the retry must reuse the SAME profile. */
+    wanProfil: engineKey === 'wan' ? job.wanProfil : undefined,
     t2v: mode === 'video' && !isMotion && job.t2v === true ? true : undefined,
     t2vPersonnage: mode === 'video' && !isMotion && job.t2v === true && job.t2vPersonnage === true ? true : undefined,
     origineUri: origineValide(job.origineUri),
@@ -4620,6 +4684,17 @@ async function runJob(job, isRetry = false, connRetried = false) {
       comfy.appliquerPilotage(job.workflowFile, workflow, { prompt: positive, negative: job.composedNegative, seed: job.seed,
         width: (isEdit || isVideo) ? undefined : job.width, height: (isEdit || isVideo) ? undefined : job.height,
         sourceImage: job.sourceImage ?? undefined }, applied, skipped)
+    /* ---------- WAN profile AMD: the measured ceilings ----------
+       Last touch on the video settings, deliberately: injection has just written
+       what the console asked (a 9:16 format at the twin's area gives 480×848,
+       i.e. 16 px over the measured long side), and the declared slots win over
+       the wiring. Here the request is brought back to what was MEASURED, never
+       above it, and the provenance records each reduction — the operator sees on
+       the asset why a 10 s shot arrived at 5 s. */
+    if (isVideo && job.videoEngine === 'wan' && job.wanProfil === 'amd') {
+      const r = capVideoAuxNormes(workflow)
+      if (r.notes.length) applied.push(...r.notes)
+    }
     /* Generated Krea photos: direct 2 MP render (see comfy.rendre2MP).
        Not on retouches (they have their own graph); CREATOROS_PHOTO_2MP=0 reverts to 1 MP. */
     if (job.mode === 'photo' && !isEdit && /^PROD_gen_krea/.test(job.workflowFile ?? '')

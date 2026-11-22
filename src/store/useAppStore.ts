@@ -10,7 +10,7 @@ import type {
   MediaMode, Register, Job, Asset,
   PhotoSelections, VideoSelections, SonSelections } from '../types'
 import { buildPhotoPrompt, buildVideoPrompt } from '../core/promptBuilder'
-import type { Garderobe, LoraGroupeVideo, LoraInfo, LoraPick, LorasVideo, PersonaCredit, PhotoEngine } from '../types'
+import type { Garderobe, LoraGroupeVideo, LoraInfo, LoraPick, LorasVideo, PersonaCredit, PhotoEngine, WanProfil, WanProfilAmd } from '../types'
 import { GARDEROBE_VIDE } from '../types'
 import { composer } from '../core/composer'
 import type { FolderSort } from '../lib/folders'
@@ -74,6 +74,10 @@ interface AppState {
   setFocusAsset: (id: string | null) => void
   /** What the server prepends to the prompt, read from /api/health (4-layer block). */
   serverInfo: { preambles: Record<string, string>; composerModels: Record<string, string>; renderRates: RenderRates | null } | null
+  /** WAN profile as the SERVER's hardware sets it (`amd` on ROCm, `original`
+   *  elsewhere), read from /api/health — that is what an untouched switch means.
+   *  Null until the health call has answered. */
+  wanProfilDefaut: { defaut: WanProfil; amd: WanProfilAmd } | null
   promoteJob: (id: string) => Promise<void>
   /** PERMANENT deletion of a finished/blocked job: the row, its renders and
    *  their files (server cascade). Returns the number of renders removed. */
@@ -549,6 +553,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => {
     focusAssetId: null,
     setFocusAsset: id => set({ focusAssetId: id }),
     serverInfo: null,
+    wanProfilDefaut: null,
     promoteJob: async id => { await fetch(`/api/jobs/${id}/promote`, { method: 'POST' }) },
     deleteJob: async id => {
       const res = await fetch(`/api/jobs/${id}`, { method: 'DELETE' })
@@ -828,7 +833,9 @@ export const useAppStore = create<AppState>()(persist((set, get) => {
       try {
         const h = await (await fetch('/api/health')).json()
         setEngineCatalog(h.videoEngines)
-        set({ h3: (h.h3 as AppState['h3']) ?? null })
+        set({ h3: (h.h3 as AppState['h3']) ?? null,
+          // WAN profile preselection: the server knows the card, the browser does not
+          wanProfilDefaut: (h.wanProfil as AppState['wanProfilDefaut']) ?? null })
         setT0Blocklist(h.t0Blocklist)
         // Character name: configured on the server, "Personnage" otherwise.
         const nom = (h.persona?.name ?? h.personaName) as string | undefined
@@ -1494,6 +1501,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => {
           // The clone only takes draft mode if the engine supports it: after
           // an engine change in memory, the server would reject it.
           videoDraft: Boolean(sel.draft) && Boolean(engineInfo(sel.engine ?? 'wan').draft),
+          ...(sel.engine === 'wan' && sel.wanProfil ? { wanProfil: sel.wanProfil } : {}),
         } : {}),
         ...(isMotion ? {
           motionDriver: sel.motionDriverFile,
@@ -1708,6 +1716,10 @@ export const useAppStore = create<AppState>()(persist((set, get) => {
           videoSeconds: Math.min(s.video.durationS, engineInfo(s.video.engine).maxSeconds),
           videoFps: s.video.fps,
           videoDraft: s.video.draft && Boolean(engineInfo(s.video.engine).draft),
+          /* WAN profile: only sent when the operator touched the switch. Absent,
+             the server applies the machine's default (AMD → `amd`), so a stored
+             console state never overrides new hardware. */
+          ...(s.video.engine === 'wan' && s.video.wanProfil ? { wanProfil: s.video.wanProfil } : {}),
           /* Continuation or prequel: always the edit (source + continuation); the server then moves the
              continuation alone to the trash. */
           ...(s.video.task === 'extend'

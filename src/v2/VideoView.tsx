@@ -10,7 +10,7 @@ import { ImportLora } from '../components/ImportLora'
 import { useBriefHistory } from '../components/BriefHistory'
 import { Inspirations } from '../components/Inspirations'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Asset, LoraGroupeVideo, LoraPick, VideoAspect } from '../types'
+import type { Asset, LoraGroupeVideo, LoraPick, VideoAspect, WanProfil } from '../types'
 import { STATUTS_ACTIFS } from '../types'
 import { useAppStore } from '../store/useAppStore'
 import { engineInfo, moteurT2v, VIDEO_ENGINES } from '../features/console/video/engines'
@@ -69,6 +69,49 @@ function PickMenu<T extends string | number>({ at, onClose, options, current, fm
   )
 }
 const ASPECTS: VideoAspect[] = ['origine', '9:16', '2:3', '3:4', '1:1', '16:9']
+
+/* ---------- WAN profile switch (AMD card) ----------
+   Two ways to run the same Wan i2v shot, chosen PER SHOT (server/profilWan.js):
+   `amd` = recipe twin with the Q5_K_S GGUF parts + the measured ceilings,
+   `original` = the shipped weights and the console's own dimensions.
+   The server's /api/health says which one the CARD defaults to; an untouched
+   switch means that default, so new hardware never meets a stale browser
+   choice. Nothing is blocked: `original` on a 24 GB ROCm card is allowed, and
+   the line under the switch states what it measured (> 3 h for one clip). */
+function WanProfilPill({ moteur }: { moteur: string }) {
+  const s = useAppStore()
+  const v = s.video
+  const info = s.wanProfilDefaut
+  if (moteur !== 'wan' || !info) return null
+  const amdSurCetteCarte = info.defaut === 'amd'
+  const actif: WanProfil = v.wanProfil ?? info.defaut
+  const a = info.amd
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1.5 flex-wrap items-center">
+        <span className="text-[12px]" style={{ color: 'var(--faint)' }}>{t('profil WAN')}</span>
+        <button className={`pill tool ${actif === 'amd' ? 'used' : ''}`}
+          title={t('poids GGUF Q5_K_S, plan ramené à ce qui a été mesuré')}
+          onClick={() => s.updateVideo({ wanProfil: 'amd' })}>
+          AMD <small>{`≈${a.minutes} min · ${a.dimensions} · ${a.imagesMax} img · ${a.fps} fps`}</small>
+        </button>
+        <button className={`pill tool ${actif === 'original' ? 'used' : ''}`}
+          title={t('poids et réglages de la recette d’origine, dimensions de la console')}
+          onClick={() => s.updateVideo({ wanProfil: 'original' })}>
+          {t('original')} <small>{`fp8 · ${t('réglages de la console')}`}</small>
+        </button>
+      </div>
+      <div className="text-[12px]" style={{ lineHeight: 1.45, color: actif === 'original' && amdSurCetteCarte ? 'var(--attention)' : 'var(--muted)' }}>
+        {actif === 'amd'
+          ? t('Le profil AMD ramène le plan à {dim}, {img} images, {fps} fps et {dur} s : au-delà, l’encodage VAE seul dépasse la demi-heure (mesuré sur RX 7900 XTX).',
+            { dim: a.dimensions, img: a.imagesMax, fps: a.fps, dur: a.dureeMax })
+          : amdSurCetteCarte
+            ? t('Sur cette carte : mesuré plus de 3 h pour un plan à 704×1248 / 121 images (27 min d’encodage VAE, ~1000 s par pas). Le choix reste le tien.')
+            : t('Poids fp8 d’origine, dimensions et durée telles que réglées ici.')}
+      </div>
+    </div>
+  )
+}
 
 type VTab = 'creer' | 'ambiance' | 'rejouer' | 'etendre' | 'stage'
 
@@ -230,6 +273,7 @@ export function VideoView({ onOpen }: { onOpen: (a: Asset, list: Asset[]) => voi
           {vMenu?.kind === 'aspect' && <PickMenu at={vMenu} onClose={() => setVMenu(null)} options={ASPECTS} current={v.aspect}
             fmt={o => o === 'origine' ? t('origine (still)') : o} onPick={o => s.updateVideo({ aspect: o })} />}
           <LoraFold open={loraOpen} setOpen={setLoraOpen} moteur={eng.key} />
+          <WanProfilPill moteur={eng.key} />
           <div className="flex gap-1.5 flex-wrap items-center">
             {eng.draft && (
               <button className={`pill tool ${v.draft ? 'used' : ''}`} onClick={() => s.updateVideo({ draft: !v.draft })}>

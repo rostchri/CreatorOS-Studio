@@ -4,6 +4,7 @@
    (CREATOROS_HOST to expose it).
    ============================================================ */
 import { etatAllegement } from './allege.js'
+import { INFO_WAN_AMD, profilWanParDefaut } from './profilWan.js'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import os from 'node:os'
@@ -328,6 +329,9 @@ app.get('/api/health', async req => {
     ok: comfyState === 'ok', comfy: comfyState, vram, liaison: comfy.etatLiaison(),
     queue: queueDepth(), recipes: RECIPES, swapWorkflow: null,
     videoEngines: VIDEO_ENGINES, defaultVideoEngine: DEFAULT_VIDEO_ENGINE, h3: await etatH3().catch(() => null),
+    /* WAN profile: the machine's default lets the console preselect the switch,
+       and `amd` says what choosing it costs and buys (measured values). */
+    wanProfil: { defaut: profilWanParDefaut(), amd: INFO_WAN_AMD },
     composerModels: CONFIG.composerModels,
     // server paths: owner only (the public demo is on the Internet)
     ...(estProprietaire(req) ? { workflowsDir: CONFIG.workflowsDir, promptsDir: CONFIG.promptsDir,

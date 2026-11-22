@@ -362,6 +362,13 @@ export const mobile: Record<string, string> = {
   'Job': 'Job',
   'copier': 'copy',
 
+  // MCreate — WAN profile switch (AMD card)
+  'Profil WAN': 'WAN profile',
+  'AMD': 'AMD',
+  'original': 'original',
+  '{img} images, {fps} fps, {cote} px max — ≈{min} min mesuré sur 24 Go ROCm': '{img} frames, {fps} fps, {cote} px max — ≈{min} min measured on 24 GB ROCm',
+  'poids fp8 d’origine, dimensions de la console — plus de 3 h mesuré sur cette carte': 'original fp8 weights, console dimensions — over 3 h measured on this card',
+
   // MViewer — action in progress ("…son")
   'encore une': 'one more',
   'son': 'sound',

@@ -15,7 +15,6 @@ import { etageLora } from './etageLora.js'
 import { personaLoraNames } from './persona.js'
 import * as sdk from './transport-sdk.js'
 import { alleger } from './allege.js'
-import { estAmd } from './carteGraphique.js'
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -24,12 +23,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 /* AMD (ROCm): a recipe may have a "<name>-rocm.json" twin, adapted to what ROCm lacks
    (SageAttention, torch.compile, int8-convrot weights without a `sansCuda` replacement)
    and to a 24 GB card. allege.js already swaps the weights of UNETLoader/CLIPLoader; the
-   twin is for the rest. When it exists on an AMD machine it is loaded instead. */
-export function recetteMachine(file) {
-  if (!estAmd() || !file.endsWith('.json') || file.endsWith('-rocm.json')) return file
-  const rocm = file.slice(0, -'.json'.length) + '-rocm.json'
-  return fs.existsSync(path.join(CONFIG.workflowsDir, rocm)) ? rocm : file
-}
+   twin is for the rest. When it exists on an AMD machine it is loaded instead.
+   EXCEPTION — the profiled recipes (the WAN i2v pair): their twin is a rendering PROFILE
+   (GGUF Q5 weights, measured ceilings), not a weight fix, so the JOB decides it
+   (`wanProfil`, server/jobs.js) and the console offers the switch. The machine never
+   imposes it; see server/profilWan.js. Imported (not `export … from`): a re-export
+   creates no local binding, and loadWorkflow below calls it. */
+import { recetteMachine } from './profilWan.js'
+export { recetteMachine }
 
 export function loadWorkflow(file) {
   const full = path.join(CONFIG.workflowsDir, recetteMachine(file))

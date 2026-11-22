@@ -61,13 +61,19 @@ export function MCreate({ goJobs, goMontage }: { goJobs: () => void; goMontage?:
 
   /* Estimate BEFORE submitting, so the button is honest. */
   const rates = s.serverInfo?.renderRates
+  /* WAN profile: on the AMD profile the server brings the shot down to its
+     measured ceiling (5 s) and renders at the measured rate — the button has to
+     say the same thing the render will do. */
+  const wanAmd = v.engine === 'wan'
+    && (v.wanProfil ?? s.wanProfilDefaut?.defaut) === 'amd'
   const perJob = mode === 'photo'
     ? (rates?.photoMs ?? 16000)
     : (() => {
-      const secs = Math.min(v.durationS, eng.maxSeconds)
-      const rate = v.draft
-        ? (rates?.draftSecPerSec?.[v.engine] ?? 27)
-        : (rates?.videoSecPerSec?.[v.engine] ?? 105)
+      const secs = Math.min(v.durationS, eng.maxSeconds, wanAmd ? (s.wanProfilDefaut?.amd.dureeMax ?? 5) : Infinity)
+      const rate = wanAmd ? (rates?.wanAmdSecPerSec ?? rates?.videoSecPerSec?.[v.engine] ?? 199)
+        : v.draft
+          ? (rates?.draftSecPerSec?.[v.engine] ?? 27)
+          : (rates?.videoSecPerSec?.[v.engine] ?? 105)
       return secs * rate * 1000
     })()
   const total = s.batchCount * perJob
@@ -230,6 +236,23 @@ export function MCreate({ goJobs, goMontage }: { goJobs: () => void; goMontage?:
               onChange={m => s.updateVideo({ multiShot: m })} />
           </div>
         )}
+        {mode === 'video' && vidOp === 'animate' && v.engine === 'wan' && s.wanProfilDefaut && (
+          <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+            {/* The same choice the desktop console offers: the card's default is
+                preselected, the operator can always take the other one. */}
+            {(['amd', 'original'] as const).map(p => {
+              const actif = (v.wanProfil ?? s.wanProfilDefaut!.defaut) === p
+              const a = s.wanProfilDefaut!.amd
+              return <Toggle key={p} on={actif}
+                title={`${t('Profil WAN')} · ${p === 'amd' ? 'AMD' : t('original')}`}
+                hint={p === 'amd'
+                  ? t('{img} images, {fps} fps, {cote} px max — ≈{min} min mesuré sur 24 Go ROCm',
+                    { img: a.imagesMax, fps: a.fps, cote: a.coteMax, min: a.minutes })
+                  : t('poids fp8 d’origine, dimensions de la console — plus de 3 h mesuré sur cette carte')}
+                onChange={on => on && s.updateVideo({ wanProfil: p })} />
+            })}
+          </div>
+        )}
         {mode === 'video' && vidOp === 'replay' && (
           <div style={{ marginTop: 16 }}>
             <Toggle on={!!v.motionPreview} title={t('Prévisu 480p')} hint={t('environ deux fois plus rapide')}
@@ -276,7 +299,7 @@ export function MCreate({ goJobs, goMontage }: { goJobs: () => void; goMontage?:
       )}
       {sheet === 'duration' && (
         <Sheet title={t('Durée')} onClose={() => setSheet(null)}>
-          {[3, 4, 5, 6, 8, 10, 12, 16, 20].filter(n => n <= eng.maxSeconds).map(n => (
+          {[3, 4, 5, 6, 8, 10, 12, 16, 20].filter(n => n <= eng.maxSeconds && (!wanAmd || n <= (s.wanProfilDefaut?.amd.dureeMax ?? 5))).map(n => (
             <Opt key={n} label={t('{n} secondes', { n })} on={v.durationS === n}
               onClick={() => { s.updateVideo({ durationS: n }); setSheet(null) }} />
           ))}

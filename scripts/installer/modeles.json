@@ -26,6 +26,9 @@
   "video_wan": {
    "label": "Image-to-video: Wan 2.2 I2V A14B"
   },
+  "video_wan_amd": {
+   "label": "Image-to-video: Wan 2.2 I2V on AMD (ROCm) — Q5_K_S GGUF weights of the profiled recipe (PROD_video_wan-rocm.json)"
+  },
   "video_wan_t2v": {
    "label": "Text-to-video: Wan 2.2 T2V A14B (character from a Wan LoRA pair)"
   },
@@ -124,7 +127,8 @@
     "UnetLoaderGGUF"
    ],
    "groupes": [
-    "video_retouche"
+    "video_retouche",
+    "video_wan_amd"
    ]
   },
   {
@@ -1873,6 +1877,34 @@
     "remplace": "flux3-image-klein-int8-convrot.safetensors",
     "chargeur": "UnetLoaderGGUF"
    }
+  },
+  {
+   "chemin": "wan2.2/quantstack/Wan2.2-I2V-A14B-HighNoise-Q5_K_S.gguf",
+   "dossier": "diffusion_models",
+   "url": "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q5_K_S.gguf",
+   "taille": 10137514496,
+   "licence": "Apache-2.0",
+   "groupes": [
+    "video_wan_amd"
+   ],
+   "recettes": [
+    "PROD_video_wan-rocm.json"
+   ],
+   "verifie": true
+  },
+  {
+   "chemin": "wan2.2/quantstack/Wan2.2-I2V-A14B-LowNoise-Q5_K_S.gguf",
+   "dossier": "diffusion_models",
+   "url": "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q5_K_S.gguf",
+   "taille": 10137514496,
+   "licence": "Apache-2.0",
+   "groupes": [
+    "video_wan_amd"
+   ],
+   "recettes": [
+    "PROD_video_wan-rocm.json"
+   ],
+   "verifie": true
   }
  ],
  "_exclus": [

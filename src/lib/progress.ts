@@ -10,6 +10,9 @@ export interface RenderRates {
   videoSecPerSec: Record<string, number>
   draftSecPerSec: Record<string, number>
   motionSecPerFrame: { final: number; preview: number }
+  /** WAN profile `amd` (measured, incl. cold model load): seconds per generated
+   *  second. Falls back to the table's WAN rate when absent. */
+  wanAmdSecPerSec?: number
 }
 
 export const fmtDur = (ms: number) => {
@@ -37,9 +40,10 @@ export function jobProgress(job: Job, now: number) {
 }
 
 /** Pre-submit estimate, client-side, using the server's coefficients. */
-export function estimateVideoMs(rates: RenderRates | null | undefined, engine: string, seconds: number, draft: boolean) {
+export function estimateVideoMs(rates: RenderRates | null | undefined, engine: string, seconds: number, draft: boolean, wanProfilAmd = false) {
   if (!rates) return null
-  const rate = draft ? (rates.draftSecPerSec[engine] ?? rates.videoSecPerSec[engine] / 3) : rates.videoSecPerSec[engine]
+  const rate = wanProfilAmd ? (rates.wanAmdSecPerSec ?? rates.videoSecPerSec[engine])
+    : draft ? (rates.draftSecPerSec[engine] ?? rates.videoSecPerSec[engine] / 3) : rates.videoSecPerSec[engine]
   return Number.isFinite(rate) ? rate * seconds * 1000 : null
 }
 export function estimateMotionMs(rates: RenderRates | null | undefined, frames: number, preview: boolean) {

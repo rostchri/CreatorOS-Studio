@@ -158,6 +158,18 @@ export const GARDEROBE_VIDE: Garderobe = { tenues: [], lieux: [], perso: [] }
 
 export type VideoEngine = 'wan' | 'ltx' | 'ltx_hq' | 'minimax' | 'wan_t2v'
 
+/** WAN i2v profile (server/profilWan.js): measured AMD ceilings vs the shipped
+ *  recipe. The job may always pick the other one than the machine's default. */
+export type WanProfil = 'amd' | 'original'
+
+/** What the AMD profile costs and buys, as the server measured it (/api/health). */
+export interface WanProfilAmd {
+  coteMax: number; imagesMax: number; fps: number; dureeMax: number; minutes: number
+  /** The twin recipe's own dimensions, e.g. `480×832`. */
+  dimensions: string
+  unet: string[]
+}
+
 export interface VideoSelections {
   task: VideoTask
   /** Render engine, chosen manually. */
@@ -255,6 +267,14 @@ export interface VideoSelections {
   /** Optional video LoRAs (turbo, realism, physics…) stacked on the
    *  engine recipe. Empty by default = recipe unchanged. */
   videoLoras: LoraPick[]
+  /** WAN profile (engine `wan` only): `amd` = recipe twin with the Q5_K_S GGUF
+   *  parts and the measured ceilings (480×832, 81 images, 16 fps — ≈17 min on a
+   *  7900 XTX), `original` = the shipped weights and the console's own settings.
+   *  Absent = the machine's default (AMD → `amd`, NVIDIA → `original`; the
+   *  server says which, see `wanProfil.defaut` on /api/health). The switch is
+   *  never blocked: choosing `original` on an AMD card is the operator's call,
+   *  and the console warns what it costs. */
+  wanProfil?: WanProfil
   /** Draft: same recipe at reduced resolution (0.4 MP on MiniMax, ~3x
    *  faster). Judges the PROMPT — pacing, energy, slow motion — not the shot:
    *  initial noise changes with resolution, so framing and gesture do
@@ -271,8 +291,9 @@ export interface VideoSelections {
    *  engines' voice is real-time and does not tolerate atempo). */
   durationS: number
   /** Frame rate of the delivered file. Does not change generation: above the
-   *  native rate, export duplicates frames. */
-  fps: 24 | 30
+   *  native rate, export duplicates frames. 16 = the WAN AMD profile's native
+   *  cadence (the server caps it to what the card measures). */
+  fps: 16 | 24 | 30
   /** 'origine' keeps the starting still's aspect. Other values are those
    *  accepted by ComfyUI's ResolutionSelector node. */
   aspect: VideoAspect
