@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { CONFIG } from './config.js'
 import * as store from './db.js'
 import { enqueue, enqueueEntrainement } from './jobs.js'
+import { MOTEURS_ENTRAINEMENT } from './entrainement.js'
 import { activer, creer as creerPersona, enregistrer as enregistrerPersona, marquerFictif, persona as personaActif, SANS_PERSONNAGE } from './persona.js'
 import { t0Hit } from './t0.js'
 // LOCAL FORK PATCH: the generator's portrait prompt and its text-only check (see fictif.js)
@@ -51,7 +52,9 @@ try {
 const garder = () => { try { fs.writeFileSync(FICHIER_SUIVIS, JSON.stringify([...suivis.values()])) } catch (e) { console.warn(`[création] suivi non enregistré : ${e.message || e}`) } }
 
 /* Engines to train: the checked list, or the legacy boolean (Klein only). */
-const moteursChoisis = (moteurs, entrainer) => Array.isArray(moteurs) ? moteurs.map(String).filter(m => m === 'klein' || m === 'krea').filter((m, i, l) => l.indexOf(m) === i) : entrainer ? ['klein'] : []
+// LOCAL FORK PATCH: every engine entrainement.js knows (was klein|krea only, FLUX 3 dropped silently);
+// whether it is ready on this machine is checked by enqueueEntrainement
+const moteursChoisis = (moteurs, entrainer) => Array.isArray(moteurs) ? moteurs.map(String).filter(m => Object.hasOwn(MOTEURS_ENTRAINEMENT, m)).filter((m, i, l) => l.indexOf(m) === i) : entrainer ? ['klein'] : []
 const nomValide = nom => {
   const n = nettoie(nom, 40)
   if (n.length < 2 || t0Hit(n)) throw new Error('donne un nom au personnage')

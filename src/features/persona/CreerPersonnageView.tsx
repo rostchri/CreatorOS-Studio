@@ -168,7 +168,7 @@ export function CreerPersonnageView() {
       </div>
     </div>
   ) : undefined
-  const lignesSuivi = suivi && <span className="texte-doux">{t('Planche : {p} · images : {i}', { p: suivi.planche ?? '…', i: suivi.images })}{suivi.entrainements?.length ? ` · ${suivi.entrainements.map(e => `LoRA ${e.moteur === 'krea' ? 'Krea 2' : 'Klein'} : ${e.statut ?? '…'}`).join(' · ')}` : suivi.entrainementEtat ? ` · ${t('LoRA : {e}', { e: suivi.entrainementEtat })}` : ''}</span>
+  const lignesSuivi = suivi && <span className="texte-doux">{t('Planche : {p} · images : {i}', { p: suivi.planche ?? '…', i: suivi.images })}{suivi.entrainements?.length ? ` · ${suivi.entrainements.map(e => `LoRA ${moteursDispo.find(m => m.id === e.moteur)?.nom ?? e.moteur} : ${e.statut ?? '…'}`).join(' · ')}` : suivi.entrainementEtat ? ` · ${t('LoRA : {e}', { e: suivi.entrainementEtat })}` : ''}</span>
   const resultatPhotos = photos.length > 0 ? (
     <div style={{ display: 'grid', gap: 14 }}>
       <b>{t('Choisis la photo de profil')}</b>
