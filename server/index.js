@@ -50,7 +50,7 @@ import { lancerCroquis, etatCroquis, choisirCroquis } from './croquis.js'
 import { lancerRestauration, etatRestauration } from './restauration.js'
 import { VOIX, changerVoix, cloner, cloneDisponible, dire, echantillon, synthetiser, voixAcceptee, voixDisponible } from './voix.js'
 import { aiToolkitPret, moteurEntrainementPret, MOTEURS_ENTRAINEMENT, tempsEntrainement } from './entrainement.js'
-import { creerDepuisImages, creerPersonnage, entrainerSelection, etatCreation, propositions } from './createurPersonnage.js'
+import { creerDepuisImages, creerPersonnage, entrainerSelection, etatCreation, photosImportees, propositions } from './createurPersonnage.js'
 import { etatPack, lancerPack } from './packPub.js'
 import * as extensions from './extensions.js'
 import * as workflowsComfy from './workflowsComfy.js'
@@ -77,7 +77,7 @@ const ROUTES_PROPRIETAIRE = new Set([
   'PATCH /api/assets/:id', 'POST /api/briefs/star',
   // Public demo: a visitor starts only from studio-generated images, never from
   // a photo of a real person; the upload list is not public.
-  'POST /api/upload', 'GET /api/uploads', 'POST /api/parole/voix', 'POST /api/parole/dire', 'POST /api/montage/musiques',
+  'POST /api/upload', 'GET /api/uploads', 'GET /api/personas/:id/photos-importees', 'POST /api/parole/voix', 'POST /api/parole/dire', 'POST /api/montage/musiques',
   'POST /api/telephone', 'GET /api/telephone/:jeton/etat', 'POST /api/stage/glb', 'PUT /api/modeles/h3/:nom', 'POST /api/personas/:id/entrainer', 'POST /api/voix/clone', 'POST /api/voix/changer', 'POST /api/extensions/:id/installer', 'POST /api/workflows-comfy/:id/telecharger', 'POST /api/workflows-comfy/:id/lancer', 'POST /api/comfy/maj', 'POST /api/comfy/noeuds', 'POST /api/comfy/redemarrer', 'POST /api/extensions/:id/retirer', 'POST /api/personnages/propositions', 'POST /api/personnages/creer', 'POST /api/personnages/creer-depuis-images', 'POST /api/personnages/creer/:id/entrainer',
 ])
 const estProprietaire = req => {
@@ -2170,9 +2170,15 @@ app.get('/api/entrainement', async () => {
   const moteurs = Object.entries(MOTEURS_ENTRAINEMENT).map(([id, m]) => ({ id, nom: m.nom, pret: moteurEntrainementPret(id), ...tempsEntrainement(id) }))
   return { pret: aiToolkitPret(), moteurs, travaux }
 })
+/* LOCAL FORK PATCH: the photos a character was created from (see photosImportees), offered again for training */
+app.get('/api/personas/:id/photos-importees', async req => ({ photos: photosImportees(req.params.id).map(({ cle, url }) => ({ cle, url })) }))
 app.post('/api/personas/:id/entrainer', async (req, reply) => {
   const ids = Array.isArray(req.body?.assets) ? req.body.assets.slice(0, 30) : []
-  const images = ids.map(i => store.getAsset(String(i))).filter(a => a && a.media_type === 'photo').map(a => path.join(CONFIG.mediaDir, path.basename(a.filename ?? a.uri))).filter(f => fs.existsSync(f))
+  const deLaBibliotheque = ids.map(i => store.getAsset(String(i))).filter(a => a && a.media_type === 'photo').map(a => path.join(CONFIG.mediaDir, path.basename(a.filename ?? a.uri))).filter(f => fs.existsSync(f))
+  // LOCAL FORK PATCH: `fichiers` = keys of GET /api/personas/:id/photos-importees, only this character's
+  const parCle = new Map(photosImportees(req.params.id).map(x => [x.cle, x.chemin]))
+  const importees = (Array.isArray(req.body?.fichiers) ? req.body.fichiers.slice(0, 30) : []).map(k => parCle.get(String(k))).filter(Boolean)
+  const images = [...new Set([...deLaBibliotheque, ...importees])].slice(0, 30)
   // one or more engines: one training per engine, queued one after another
   const moteurs = (Array.isArray(req.body?.moteurs) ? req.body.moteurs : [req.body?.moteur ?? 'klein']).map(String).filter((m, i, l) => l.indexOf(m) === i).slice(0, 3)
   try {

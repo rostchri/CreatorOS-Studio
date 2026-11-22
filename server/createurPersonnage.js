@@ -167,16 +167,25 @@ export function creerDepuisImages({ images, profil, nom, traits, adulte, entrain
   const [pro, ...autres] = uniques
   const refs = autres.slice(0, plan.references)
   for (const r of refs) if (r.copie) { fs.copyFileSync(r.chemin, path.join(CONFIG.comfyInput, r.nom)); store.noterInput(r.nom, 'upload') }
-  return lancerCreation({ nom: n, x, src: pro.chemin, ancrageY: 0.15, fictif: false, scenes: plan.scenes, aEntrainer, verifier,
+  const etat = lancerCreation({ nom: n, x, src: pro.chemin, ancrageY: 0.15, fictif: false, scenes: plan.scenes, aEntrainer, verifier,
     refs: refs.map(r => r.nom), extras: plan.uploadsEntrainement ? uniques.map(u => u.chemin) : [],
     description: `${n} : personnage créé à partir de photos importées${x ? `, ${description(x)}` : ''}`,
     credit: { auteur: 'CreatorOS Studio', url: '', licence: 'personnage créé à partir de photos importées (personne majeure, accord confirmé par le propriétaire)' } })
+  // the originals stay selectable for later trainings, even from a single photo
+  noterImportees(etat?.personaId, uniques.map(u => u.chemin))
+  return etat
 }
 
 /* ---- LOCAL FORK PATCH: the owner picks the training images (kanban tf-mwqowv3x-fqxc) ---- */
 const EN_COURS = ['queued', 'rendering']
 const scenesTerminees = c => c.images.every(j => { const s = store.getJob(j)?.status; return s && !EN_COURS.includes(s) })
 const entrainementEnCours = c => (c.entrainements ?? []).some(e => EN_COURS.includes(store.getJob(e.job)?.status))
+/* An imported photo as a training candidate: an upload lives in the ComfyUI input folder, a library photo in media. */
+const candidatImporte = f => {
+  const nom = path.basename(f)
+  const url = path.resolve(path.dirname(f)) === path.resolve(CONFIG.comfyInput) ? `/api/uploads/${encodeURIComponent(nom)}` : `/media/${encodeURIComponent(nom)}`
+  return { cle: `fichier:${nom}`, url, chemin: f, source: 'photo' }
+}
 /** Images a creation can train on: the generated scenes (library assets), then the imported photos
  *  (extras). `cle` is what entrainerSelection takes back, `url` what the browser shows, `chemin`
  *  stays on the server. An imported upload lives in the ComfyUI input folder, a library photo in media. */
@@ -185,13 +194,37 @@ function candidats(c) {
     const nom = path.basename(a.filename ?? a.uri)
     return { cle: `asset:${a.id}`, url: `/media/${nom}`, chemin: path.join(CONFIG.mediaDir, nom), source: 'scene' }
   }))
-  const importes = (c.extras ?? []).filter(f => fs.existsSync(f)).map(f => {
-    const nom = path.basename(f)
-    const url = path.resolve(path.dirname(f)) === path.resolve(CONFIG.comfyInput) ? `/api/uploads/${encodeURIComponent(nom)}` : `/media/${encodeURIComponent(nom)}`
-    return { cle: `fichier:${nom}`, url, chemin: f, source: 'photo' }
-  })
+  const importes = (c.extras ?? []).filter(f => fs.existsSync(f)).map(candidatImporte)
   const vus = new Set()
   return [...generes, ...importes].filter(x => fs.existsSync(x.chemin) && !vus.has(x.chemin) && vus.add(x.chemin))
+}
+
+/* Per character, the names of the photos it was created from: uploads in the ComfyUI input folder,
+   not library assets. Kept apart from the creation tracking above, which forgets a creation after
+   7 days — the character page's training must still offer them later. */
+const FICHIER_IMPORTEES = path.join(CONFIG.dataDir, 'photos-importees.json')
+const lireImportees = () => { try { return JSON.parse(fs.readFileSync(FICHIER_IMPORTEES, 'utf8')) ?? {} } catch { return {} } }
+const nomSur = n => typeof n === 'string' && n && !n.includes('/') && !n.includes('\\') && !n.startsWith('.')
+function noterImportees(personaId, fichiers) {
+  // library photos are already offered as assets: only uploads are recorded
+  const noms = fichiers.filter(f => path.resolve(path.dirname(f)) === path.resolve(CONFIG.comfyInput)).map(f => path.basename(f)).filter(nomSur)
+  if (!personaId || !noms.length) return
+  const r = lireImportees()
+  const avant = Array.isArray(r[personaId]) ? r[personaId] : []
+  const tous = [...new Set([...avant, ...noms])]
+  if (tous.length === avant.length) return
+  r[personaId] = tous
+  try { fs.writeFileSync(FICHIER_IMPORTEES, JSON.stringify(r)) } catch (e) { console.warn(`[création] photos importées non enregistrées : ${e.message || e}`) }
+}
+
+/** The photos this character was created from, for the character page's training
+ *  (POST /api/personas/:id/entrainer). `cle` is what that route takes back in `fichiers`; only keys
+ *  from this list resolve, so no other upload is reachable through it. */
+export function photosImportees(personaId) {
+  // creations made before this record existed (still tracked: less than 7 days old)
+  for (const c of suivis.values()) if (c.personaId === personaId) noterImportees(personaId, c.extras ?? [])
+  const noms = lireImportees()[personaId]
+  return (Array.isArray(noms) ? noms : []).filter(nomSur).map(n => path.join(CONFIG.comfyInput, n)).filter(f => fs.existsSync(f)).map(candidatImporte)
 }
 
 export function etatCreation(id) {

@@ -80,11 +80,22 @@ export function Entrainement() {
     return () => clearInterval(h)
   }, [actif])
   const photos = useMemo(() => s.assets.filter(a => a.mediaType === 'photo' && a.personaId === s.personaId && a.reviewStatus !== 'rejected').slice(0, 60), [s.assets, s.personaId])
+  /* LOCAL FORK PATCH: the photos the character was created from are uploads, not library assets —
+     without this they were offered only by the first training. Keys start with "fichier:". */
+  const [importees, setImportees] = useState<{ cle: string; url: string }[]>([])
+  useEffect(() => {
+    setImportees([])
+    if (!edition || !s.personaId) return
+    let vivant = true
+    fetch(`/api/personas/${encodeURIComponent(s.personaId)}/photos-importees`).then(r => r.ok ? r.json() : { photos: [] })
+      .then(d => { if (vivant) setImportees(d.photos ?? []) }).catch(() => {})
+    return () => { vivant = false }
+  }, [edition, s.personaId])
   const basculer = (id: string) => setChoix(c => { const n = new Set(c); if (n.has(id)) n.delete(id); else if (n.size < 30) n.add(id); return n })
   const lancer = async () => {
     setMsg(null)
     const r = await fetch(`/api/personas/${encodeURIComponent(s.personaId ?? '')}/entrainer`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assets: [...choix], declencheur: mot, pas, moteurs: [...coches].filter(id => cochables.some(m => m.id === id)) }) })
+      body: JSON.stringify({ assets: [...choix].filter(c => !c.startsWith('fichier:')), fichiers: [...choix].filter(c => c.startsWith('fichier:')), declencheur: mot, pas, moteurs: [...coches].filter(id => cochables.some(m => m.id === id)) }) })
     const d = await r.json().catch(() => ({}))
     if (!r.ok) { setMsg({ ok: false, txt: tServeur(d.error) ?? `HTTP ${r.status}` }); return }
     await s.adoptServerJob(d.jobId)
@@ -144,6 +155,12 @@ export function Entrainement() {
         <span className="texte-doux">{t('Choisis 8 à 30 images du personnage, variées (angles, lumières, tenues) : son visage sera appris et tenu sur les moteurs cochés.')}</span>
         {/* full images, uncropped: face and outfit are judged */}
         <div className="entrainement-images">
+          {importees.map(p => (
+            <button key={p.cle} onClick={() => basculer(p.cle)} aria-pressed={choix.has(p.cle)} aria-label={t('sélectionner')} className={choix.has(p.cle) ? 'choisie' : ''}>
+              <img src={p.url} alt="" loading="lazy" />
+              {choix.has(p.cle) && <i>✓</i>}
+            </button>
+          ))}
           {photos.map(a => (
             <button key={a.id} onClick={() => basculer(a.id)} aria-pressed={choix.has(a.id)} aria-label={t('sélectionner')} className={choix.has(a.id) ? 'choisie' : ''}>
               <img src={a.uri} alt="" loading="lazy" />
