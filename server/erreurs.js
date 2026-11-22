@@ -67,3 +67,15 @@ export function erreurSoumission(texte) {
   const c = conseilPour(lignes.join(' '))
   return `recette refusée par ComfyUI — ${vus}${c ? ` — ${c}` : ''}`
 }
+
+/** The prompt disappeared from ComfyUI after an outage: ComfyUI restarted (watchdog kill, crash)
+ *  and its in-memory queue and history are gone. */
+export function erreurPromptPerdu() {
+  return 'ComfyUI a été redémarré pendant le rendu : le prompt est perdu, relancer le rendu'
+}
+
+/** No sign of life from ComfyUI (no HTTP answer, no WebSocket event) for too long. */
+export function erreurComfyInjoignable(ms) {
+  const min = Math.round(ms / 60000)
+  return `ComfyUI ne donne plus aucun signe de vie depuis ${min} min : rendu abandonné (limite CREATOROS_COMFY_PANNE_MAX_MS)`
+}

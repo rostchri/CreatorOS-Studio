@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { CONFIG } from './config.js'
 import { erreurExecution, erreurSoumission } from './erreurs.js'
+import { attendrePrompt } from './attenteComfy.js'
 import { etageLora } from './etageLora.js'
 import { personaLoraNames } from './persona.js'
 import * as sdk from './transport-sdk.js'
@@ -1204,8 +1205,18 @@ const CLIENT_WS = 'creatoros-' + Math.random().toString(36).slice(2, 12)
 // lets GPU arbitration recognize the studio's renders in ComfyUI's queue (others = production)
 definirClientStudio(CLIENT_WS)
 const apercus = new Map()              // prompt_id -> { buf, mime, at }
+/* Heartbeat: time of the last WebSocket event (executing, progress, executed, previews...)
+   of each prompt. While ComfyUI's HTTP is silent, it proves the render is alive. */
+const signesDeVie = new Map()          // prompt_id -> ms
+function noteSigne(id) {
+  signesDeVie.set(id, Date.now())
+  if (signesDeVie.size > 50) signesDeVie.delete(signesDeVie.keys().next().value)
+}
+/** Last WebSocket event of a prompt (ms) or null. */
+export const dernierSigne = promptId => signesDeVie.get(promptId) ?? null
 let promptEnCours = null
 function noteApercu(data) {
+  if (promptEnCours) noteSigne(promptEnCours)
   const b = Buffer.from(data)
   if (b.length < 16) return
   const type = b.readUInt32BE(0)
@@ -1242,7 +1253,7 @@ function connectProgress() {
       try {
         if (typeof ev.data !== 'string') { noteApercu(ev.data); return }
         const m = JSON.parse(ev.data)
-        if (m.data?.prompt_id) promptEnCours = m.data.prompt_id
+        if (m.data?.prompt_id) { promptEnCours = m.data.prompt_id; noteSigne(m.data.prompt_id) }
         if (m.type === 'executing' && m.data?.prompt_id && m.data.node) { noteNoeud(m.data.prompt_id, m.data.node); return }
         if (m.type !== 'progress' || !m.data) return
         const id = m.data.prompt_id
@@ -1420,27 +1431,16 @@ export async function submitPrompt(workflow, clientId) {
   return json.prompt_id
 }
 
-/** Waits for execution to finish. `onPhase` receives 'queued' then 'rendering'. */
+/** Waits for execution to finish. `onPhase` receives 'queued' then 'rendering'.
+ *  ComfyUI's HTTP may stay mute for minutes during a long GPU step: that is not a
+ *  failure, the wait carries on with backoff (see attenteComfy.js). */
 export async function waitForPrompt(promptId, { onPhase, timeoutMs = CONFIG.jobTimeoutMs } = {}) {
   if (String(promptId).startsWith('sdk:')) return sdk.attendreFin(promptId, { onPhase, timeoutMs })
-  const t0 = Date.now()
-  let phase = null
-  for (;;) {
-    const hist = await (await comfy(`/history/${promptId}`)).json()
-    if (hist[promptId]) return hist[promptId]
-
-    const q = await (await comfy('/queue')).json()
-    const running = (q.queue_running || []).some(e => e[1] === promptId)
-    const pending = (q.queue_pending || []).some(e => e[1] === promptId)
-    const next = running ? 'rendering' : 'queued'
-    if (next !== phase) { phase = next; onPhase?.(next) }
-
-    /* The timeout only applies to a prompt that VANISHED without history (a crash,
-       not a long render). While ComfyUI holds it (running or pending), keep waiting. */
-    if (!running && !pending && Date.now() - t0 > timeoutMs)
-      throw new Error(`délai dépassé (${Math.round(timeoutMs / 1000)} s) sans résultat`)
-    await sleep(1000)
-  }
+  return attendrePrompt(promptId, {
+    lire: async chemin => (await comfy(chemin, { signal: AbortSignal.timeout(30_000) })).json(),
+    sleep, maintenant: Date.now, signeDeVie: dernierSigne,
+    onPhase, timeoutMs, panneMaxMs: CONFIG.comfyPanneMaxMs,
+  })
 }
 
 /** Extracts the images of a history entry, and throws on execution failure

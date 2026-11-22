@@ -12,6 +12,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "start": "node server/index.js",
+    "test": "node --test server/*.test.js",
     "setup": "node scripts/installer/setup.mjs",
     "studio": "node scripts/agent/studio.mjs",
     "mcp": "node scripts/agent/mcp.mjs"

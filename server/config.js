@@ -126,6 +126,13 @@ export const CONFIG = {
      pending), so it can be generous. */
   jobTimeoutMs: Number(process.env.CREATOROS_JOB_TIMEOUT_MS || 120 * 60 * 1000),
 
+  /* ComfyUI answers no HTTP during long GPU steps (VAE encode, heavy sampling), for
+     minutes. A job whose prompt is known keeps waiting (polling with backoff) and is
+     given up only when ComfyUI shows NO sign of life at all (no HTTP answer, no
+     WebSocket event of the prompt) for this long, or when the prompt is provably
+     gone (ComfyUI restarted). Default 4 h. */
+  comfyPanneMaxMs: Number(process.env.CREATOROS_COMFY_PANNE_MAX_MS || 4 * 60 * 60 * 1000),
+
   /* Owner key (public demo). When set, it locks what describes the studio
      (Creator page, characters and wardrobe, LoRAs, profile photos, recipes
      and prompts): without the exact X-Owner-Key header, these writes return

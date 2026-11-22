@@ -19,6 +19,7 @@ let h3Disponible = false
 const relireH3 = () => etatH3().then(e => { h3Disponible = e.disponible }).catch(() => {})
 relireH3(); setInterval(relireH3, 30_000).unref()
 import * as comfy from './comfy.js'
+import { ErreurAttente, relancePermise } from './attenteComfy.js'
 import { blocOllama, pourRendu } from './gpu.js'
 import { aReecrire, reecrireFlux3 } from './flux3Upsampler.js'
 import * as sdk from './transport-sdk.js'
@@ -4806,14 +4807,26 @@ async function runJob(job, isRetry = false, connRetried = false) {
       console.log(`[job ${job.id}] annulé pendant le rendu`)
       return
     }
-    const isConn = /fetch failed|ECONNREFUSED|ECONNRESET|socket hang up/i.test(String(e.message || e))
+    /* A wait that gave up with a plain-language reason (prompt lost, no sign of life)
+       is final: it must not be mistaken for a connection error and resubmitted. */
+    const isConn = !(e instanceof ErreurAttente) && /fetch failed|ECONNREFUSED|ECONNRESET|socket hang up/i.test(String(e.message || e))
     if (isConn && !connRetried) {
       console.warn(`[job ${job.id}] ComfyUI injoignable — attente puis relance`)
+      const promptConnu = current?.promptId
       store.setStatus(job.id, 'retry')
       current = null
       try { await comfy.waitReady() } catch (e2) {
         store.markFailed(job.id, Date.now() - t0, e2.message || e2)
         console.error(`[job ${job.id}] ÉCHEC — ${e2.message || e2}`)
+        return
+      }
+      /* NEVER a second submission while the old prompt exists: the render would run twice
+         (a failing fetch after submission, e.g. while harvesting, says nothing about the prompt). */
+      const relance = await relancePermise(promptConnu, comfy.promptKnown)
+      if (!relance.ok) {
+        const msg = `ComfyUI injoignable pendant le suivi du rendu, mais le prompt ${promptConnu} existe encore (${relance.etat}) : pas de nouvelle soumission`
+        store.markFailed(job.id, Date.now() - t0, msg)
+        console.error(`[job ${job.id}] ÉCHEC — ${msg}`)
         return
       }
       return runJob(job, isRetry, true)
